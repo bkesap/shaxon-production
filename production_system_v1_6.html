@@ -1789,7 +1789,7 @@ let undoPending=null;
 function adminUndo(stationId,so,item,group,qty,lineId){
   undoPending={stationId,so,item,group,qty:parseInt(qty)||0,lineId};
   // Show confirm
-  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nGeri al: ${item} urununu ${shortGrp(group)} istasyonundan Queue ya gonder?`))return;
+  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nHoan tac: Chuyen ${item} tu ${shortGrp(group)} ve hang cho?`))return;
   executeUndo();
 }
 async function executeUndo(){
