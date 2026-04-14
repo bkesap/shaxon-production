@@ -763,7 +763,7 @@ function rebuildJobs(){
           displayQty:displayQty,
           qty:isPartialStation?(displayQty+' pcs'):(line.qty),
           group:st.grp,state:st.state,
-          startedAt:['active','waiting'].includes(st.state)?new Date(st.started_at).getTime():null,
+          startedAt:['active','waiting'].includes(st.state)&&st.started_at?new Date(st.started_at).getTime():null,
           elapsed:st.elapsed_ms||0,
           note:st.note||'',
           sentQty:st.sent_qty||0,
@@ -991,7 +991,7 @@ async function confirmStart(){
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
 async function pauseJob(sid){
   const j=jobs.find(x=>x.stationId===sid);if(!j)return;
-  const add=Date.now()-j.startedAt;
+  const add=j.startedAt?Date.now()-j.startedAt:0;
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',sid);await loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
@@ -1079,7 +1079,7 @@ async function confirmTestComplete(){
 }
 
 async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
-  const add=j.state==='active'?Date.now()-j.startedAt:0;
+  const add=j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
   setSyncDot('syncing');
   try{
@@ -1906,20 +1906,20 @@ function updateShiftBar(){
     remaining.style.color='rgba(255,255,255,.7)';
   }
 }
+let shiftStartNotified=false;
 async function checkShiftEnd(){
   const si=getShiftInfo();
-  // Fire auto-pause once when shift ends
+  // ── SHIFT END → auto-pause all active jobs
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
+    shiftStartNotified=false;
     const activeJobs=jobs.filter(j=>j.state==='active');
     if(activeJobs.length>0){
-      // Show big notification
       showShiftEndAlert(activeJobs.length);
-      // Auto-pause all active jobs
       setSyncDot('syncing');
       try{
         for(const j of activeJobs){
-          const add=Date.now()-j.startedAt;
+          const add=j.startedAt?Date.now()-j.startedAt:0;
           await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
         }
         await loadAll();
@@ -1929,8 +1929,27 @@ async function checkShiftEnd(){
       showToast('⏰ Shift ended / Ca lam viec da ket thuc','red');
     }
   }
-  // Reset notified flag at start of next shift
-  if(!si.isEnded&&si.isActive)shiftEndNotified=false;
+  // ── SHIFT START → auto-resume all paused jobs
+  if(si.isActive&&!shiftStartNotified){
+    shiftStartNotified=true;
+    shiftEndNotified=false;
+    const pausedJobs=jobs.filter(j=>j.state==='paused');
+    if(pausedJobs.length>0){
+      setSyncDot('syncing');
+      try{
+        const resumeNow=new Date().toISOString();
+        for(const j of pausedJobs){
+          await sb.from('stations').update({state:'active',started_at:resumeNow}).eq('id',j.stationId);
+        }
+        await loadAll();
+        showToast('▶ Shift started — '+pausedJobs.length+' jobs resumed / '+pausedJobs.length+' viec tiep tuc','green');
+      }catch(e){setSyncDot('error');}
+    }
+  }
+  // Reset flags when outside shift hours (between end and next start)
+  if(!si.isEnded&&!si.isActive){
+    shiftEndNotified=false;
+  }
 }
 function showShiftEndAlert(count){
   // Create a temporary prominent alert
