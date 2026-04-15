@@ -269,6 +269,8 @@ body{font-family:var(--font);background:var(--bg2);}
 .ob-ns{background:var(--bg2);color:var(--txt2);} .ob-ns .ob-dot{background:var(--txt3);}
 .tag{font-size:12px;padding:2px 9px;border-radius:8px;font-weight:500;}
 .tag-complete{color:#1b5e20;background:var(--green-lt);border:1px solid var(--green-bdr);}
+.tag-partial{color:#6a1b9a;background:#F3E5F5;border:1px solid #CE93D8;font-weight:600;}
+.row-partial td{background:#FDF5FF !important;}
 .tag-paused{color:var(--amber-dk);background:var(--amber-lt);}
 .dash-note{font-size:11px;color:var(--amber-dk);font-style:italic;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .empty-dash{padding:30px;text-align:center;color:var(--txt3);font-size:14px;}
@@ -1370,13 +1372,26 @@ function renderDash(){
     if(!soLines.length)return;
     const allLines=soMap[so],total=allLines.length,doneCount=allLines.filter(l=>l.fully_done).length;
     const allComplete=doneCount===total&&total>0;
+    // Detect partial complete: fully_done=true but sent_qty < total qty
+    const isLinePartial=l=>{
+      if(!l.fully_done)return false;
+      const totalQty=parseInt(l.qty)||0;
+      const doneSts=l.stations.filter(s=>s.state==='done');
+      const maxSent=doneSts.length?Math.max(...doneSts.map(s=>s.sent_qty||0)):0;
+      return totalQty>0&&maxSent>0&&maxSent<totalQty;
+    };
+    const hasPartial=allLines.some(isLinePartial);
     const hasPaused=allLines.some(l=>getLineStatus(l)==='Paused');
     const pct=total?Math.round(doneCount/total*100):0;
-    const headerTag=allComplete?`<span class="tag tag-complete">ORDER COMPLETE</span>`:hasPaused?`<span class="tag tag-paused">PAUSED</span>`:'';
+    const headerTag=allComplete&&hasPartial
+      ?`<span class="tag tag-partial">⚠️ PARTIAL COMPLETE</span>`
+      :allComplete?`<span class="tag tag-complete">ORDER COMPLETE</span>`
+      :hasPaused?`<span class="tag tag-paused">PAUSED</span>`:'';
     const rows=soLines.map(l=>{
       const st=getLineStatus(l),elapsed=getTotalElapsed(l);
       let obCls='ob-ns',obLbl='Not Started';
-      if(l.fully_done){obCls='ob-done';obLbl='Complete';}
+      if(l.fully_done&&isLinePartial(l)){obCls='ob-done';obLbl='⚠️ Partial Complete';}
+      else if(l.fully_done){obCls='ob-done';obLbl='Complete';}
       else if(st==='In Progress'){obCls='ob-active';obLbl='In Progress';}
       else if(st==='Paused'){obCls='ob-paused';obLbl='PAUSED';}
       const allSt=l.stations.filter(s=>!['taken'].includes(s.state));
@@ -1392,7 +1407,7 @@ function renderDash(){
       }).join(''):'<span style="font-size:12px;color:var(--txt3);">No activity</span>';
       const allNotes=l.stations.filter(s=>s.note).map(s=>`${shortGrp(s.grp)}: ${s.note}`);
       const notesHtml=allNotes.length?`<div class="dash-note" title="${allNotes.join(' | ')}">📝 ${allNotes.join(' · ')}</div>`:'';
-      return `<tr class="${l.fully_done?'row-done':''}">
+      return `<tr class="${l.fully_done&&isLinePartial(l)?'row-partial':l.fully_done?'row-done':''}">
         <td class="item-num" title="${l.item}">${l.item}</td><td>${l.qty}</td>
         <td><span class="ob ${obCls}"><span class="ob-dot"></span>${obLbl}</span></td>
         <td><div class="flow">${flowHtml}</div>${notesHtml}</td>
