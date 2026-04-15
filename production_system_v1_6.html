@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a2a5e">
-<title>Shaxon Production Monitoring v1.6</title>
+<title>Shaxon Production v25</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body style="margin:0;padding:0;">
@@ -98,21 +98,6 @@ body{font-family:var(--font);background:var(--bg2);}
 .status-date{font-size:11px;color:var(--txt3);}
 .readonly-banner{background:#FFF8E1;border-bottom:1px solid #FFE082;padding:6px 14px;font-size:12px;color:#e65100;text-align:center;flex-shrink:0;display:none;}
 .readonly-banner.on{display:block;}
-
-/* SHIFT BAR */
-.shift-bar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--blue-dk);flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.1);}
-.shift-bar.ended{background:#7b1a1a;}
-.shift-bar.warning{background:#7a4200;}
-.sb-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
-.sb-times{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;white-space:nowrap;}
-.sb-sep{color:rgba(255,255,255,.3);}
-.sb-progress-wrap{flex:1;background:rgba(255,255,255,.15);border-radius:4px;height:6px;min-width:60px;}
-.sb-progress-fill{height:6px;border-radius:4px;background:#4CAF50;transition:width .5s;}
-.sb-progress-fill.warning{background:#FF9800;}
-.sb-progress-fill.ended{background:#f44336;}
-.sb-elapsed{font-size:12px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.sb-remaining{font-size:11px;color:rgba(255,255,255,.7);font-variant-numeric:tabular-nums;white-space:nowrap;}
-.sb-overtime{font-size:11px;font-weight:700;color:#FF8A65;white-space:nowrap;}
 
 /* MAIN BODY */
 .main-body{display:flex;flex:1;overflow:hidden;}
@@ -237,10 +222,6 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-take{padding:10px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;}
 .btn-take .vn{font-size:9px;opacity:.8;}
 .btn-take:active{opacity:.85;}
-.btn-take-locked{background:#9099AA;cursor:not-allowed;opacity:.85;}
-.btn-take-locked:active{transform:none;opacity:.85;}
-.q-locked{border-left-color:#9099AA;background:#F7F7F9;}
-.q-pp-pending{display:inline-block;font-size:10px;font-weight:600;background:#FFF3E0;color:#e65100;padding:2px 8px;border-radius:8px;margin-left:4px;}
 
 /* DASHBOARD */
 .dash-inner{flex-direction:column;background:var(--bg3);width:100%;overflow:hidden;display:flex;flex:1;}
@@ -372,7 +353,7 @@ body{font-family:var(--font);background:var(--bg2);}
 <div class="overlay" id="connOverlay">
   <div class="spinner"></div>
   <div class="ov-logo">SHAXON</div>
-  <div class="ov-sub">Shaxon Production v24 — Connecting...</div>
+  <div class="ov-sub">Shaxon Production v25 — Connecting...</div>
 </div>
 
 <div class="app">
@@ -385,8 +366,8 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="nav-brand-sub">Production</div>
     </div>
   </div>
-  <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">/ Cong nhan</span></div>
-  <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">/ Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
+  <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
+  <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
 </div>
@@ -400,7 +381,6 @@ body{font-family:var(--font);background:var(--bg2);}
         <option value="">-- Select Team --</option>
         <option value="__ALL__">👁 All Teams</option>
         <option>Cutting</option>
-        <option>Part Pull</option>
         <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
         <option>Testing / Packing</option>
       </select>
@@ -418,21 +398,12 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="sug-box" id="itemSug" style="display:none;"></div>
     </div>
     <div class="ef f-qty">
-      <label>Qty (pcs) <span class="vn">/ So luong</span></label>
+      <label>Qty (pcs) <span class="vn">/ SL</span></label>
       <input type="number" id="inputQty" placeholder="100" min="1"/>
     </div>
     <button class="start-btn" onclick="handleStart()">START</button>
   </div>
   <div class="readonly-banner" id="readonlyBanner">👁 View only — Select a specific team to start jobs</div>
-  <!-- SHIFT BAR -->
-  <div class="shift-bar" id="shiftBar">
-    <span class="sb-label">⏱ Shift</span>
-    <span class="sb-times" id="sbTimes">08:00 → 16:30</span>
-    <div class="sb-progress-wrap"><div class="sb-progress-fill" id="sbFill" style="width:0%"></div></div>
-    <span class="sb-elapsed" id="sbElapsed">0h 00m</span>
-    <span class="sb-sep">·</span>
-    <span class="sb-remaining" id="sbRemaining">8h 30m left</span>
-  </div>
   <div class="status-bar">
     <div><span class="status-team" id="teamDisplay">-- Select Team --</span><span class="sync-dot" id="syncDot"></span></div>
     <div style="display:flex;align-items:center;gap:14px;">
@@ -457,7 +428,7 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="panel-hdr"><span class="panel-lbl">Completed (<span id="statDone">0</span>)</span></div>
       <div class="done-stats">
         <div class="d-stat"><div class="d-stat-val" id="statActive">0</div><div class="d-stat-en">Active</div><div class="d-stat-vn">Dang lam</div></div>
-        <div class="d-stat"><div class="d-stat-val" id="statAvg">--</div><div class="d-stat-en">Avg Time</div><div class="d-stat-vn">Thoi gian TB</div></div>
+        <div class="d-stat"><div class="d-stat-val" id="statAvg">--</div><div class="d-stat-en">Avg Time</div><div class="d-stat-vn">TB TG</div></div>
       </div>
       <div class="done-scroll" id="doneList">
         <div class="empty-done">Nothing completed yet<br>Chua co gi hoan thanh</div>
@@ -469,7 +440,13 @@ body{font-family:var(--font);background:var(--bg2);}
 <!-- ══ QUEUE ══ -->
 <div class="page" id="page-queue">
   <div class="queue-inner">
-    <div class="queue-top"><h2>Queue — Waiting for Next Station / Hang cho tram tiep theo</h2></div>
+    <div class="queue-top">
+      <h2>Queue — Waiting for Next Station / Hang cho tram tiep theo</h2>
+      <div class="job-search-wrap">
+        <span class="job-search-ico">🔍</span>
+        <input class="job-search" type="text" id="queueSearch" placeholder="Search SO or item..." oninput="renderQueue()" autocomplete="off" autocorrect="off" spellcheck="false"/>
+      </div>
+    </div>
     <div class="queue-body" id="queueBody">
       <div class="queue-empty">No items in queue<br>Khong co san pham nao trong hang cho</div>
     </div>
@@ -513,8 +490,6 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
-        <input type="text" id="adminSearch" placeholder="🔍 Search SO or Item..." oninput="renderAdmin()"
-          style="padding:7px 11px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;width:200px;font-family:var(--font);" autocomplete="off"/>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -631,7 +606,7 @@ body{font-family:var(--font);background:var(--bg2);}
 <div class="modal-overlay" id="testRemainingModal">
   <div class="modal-box">
     <div class="modal-hdr green">
-      <div class="modal-title">What to do with the remaining? / Con lai xu ly the nao?</div>
+      <div class="modal-title">What about the remaining? / Con lai the nao?</div>
       <div class="modal-sub" id="testRemCtx"></div>
     </div>
     <div class="modal-body">
@@ -639,10 +614,10 @@ body{font-family:var(--font);background:var(--bg2);}
       <div style="font-size:13px;color:var(--txt1);font-weight:500;margin-top:4px;">What should happen to the remaining <span id="testRemQty" style="color:#7b1fa2;font-weight:700;"></span> pcs?</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button onclick="testRemainingChoice('queue')" style="padding:13px;background:var(--blue-lt);color:var(--blue-dk);border:2px solid #90CAF9;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
-          🔄 Send to Queue / Gui vao hang cho<br><span style="font-size:11px;font-weight:400;color:var(--txt2);">Another team will continue / Nhom khac tiep tuc</span>
+          🔄 Send to Queue / Hang cho<br><span style="font-size:11px;font-weight:400;color:var(--txt2);">Another team will continue / Nhom khac tiep tuc</span>
         </button>
         <button onclick="testRemainingChoice('stay')" style="padding:13px;background:#F3E5F5;color:#6a1b9a;border:2px solid #CE93D8;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
-          ⏳ Keep here / Giu lai day<br><span style="font-size:11px;font-weight:400;color:var(--txt2);">We will continue / Chung toi tiep tuc</span>
+          ⏳ Keep here / Giu lai day<br><span style="font-size:11px;font-weight:400;color:var(--txt2);">We will continue testing / Chung toi tiep tuc kiem tra</span>
         </button>
       </div>
     </div>
@@ -713,28 +688,6 @@ async function loadAll(){
     const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
-
-    // Auto-clean orphan lines:
-    // 1. Lines with no stations at all
-    // 2. Lines where ALL stations are 'taken' or 'done' but line is NOT marked fully_done
-    //    (these are leftover test/deleted records with no active work)
-    const orphans=lines.filter(l=>{
-      if(l.fully_done)return false; // keep completed orders
-      if(l.stations.length===0)return true; // no stations at all
-      const activeStates=['active','paused','waiting','queue'];
-      const hasActive=l.stations.some(s=>activeStates.includes(s.state));
-      return !hasActive; // all stations are taken/done — nothing live
-    });
-    if(orphans.length>0){
-      for(const o of orphans){
-        await sb.from('stations').delete().eq('line_id',o.id);
-        await sb.from('lines').delete().eq('id',o.id);
-      }
-      // Re-fetch after cleanup
-      const {data:ld2,error:le2}=await sb.from('lines').select('*').order('created_at');
-      const {data:sd2}=await sb.from('stations').select('*').order('started_at');
-      if(!le2&&sd2)lines=ld2.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
-    }
     rebuildJobs();rebuildDone();rebuildQueue();
     setSyncDot('ok');
     renderWorker();renderQueue();
@@ -763,7 +716,7 @@ function rebuildJobs(){
           displayQty:displayQty,
           qty:isPartialStation?(displayQty+' pcs'):(line.qty),
           group:st.grp,state:st.state,
-          startedAt:['active','waiting'].includes(st.state)&&st.started_at?new Date(st.started_at).getTime():null,
+          startedAt:st.state==='active'?new Date(st.started_at).getTime():null,
           elapsed:st.elapsed_ms||0,
           note:st.note||'',
           sentQty:st.sent_qty||0,
@@ -802,8 +755,7 @@ function rebuildQueue(){
         so:line.so,item:line.item,
         qty:st.sent_qty||parseInt(line.qty)||0,
         totalQty:parseInt(line.qty)||0,
-        fromGroup:st.grp,queuedAt:st.done_at||'',
-        note:st.note||null
+        fromGroup:st.grp,queuedAt:st.done_at||''
       });
     });
   });
@@ -956,26 +908,12 @@ async function confirmStart(){
       if(error)throw error;
       lineId=data.id;
     }
-    // Insert the main station
     const {error:se}=await sb.from('stations').insert({
       line_id:lineId,grp:team,state:'active',
       started_at:new Date().toISOString(),elapsed_ms:0,
       done_at:null,note:null,sent_qty:0,remaining_qty:qty
     });
     if(se)throw se;
-    // If Cutting starts, auto-create a Part Pull station in parallel
-    if(team==='Cutting'){
-      // Only create if Part Pull not already active for this line
-      const existingPP=existingLine?.stations?.find(s=>s.grp==='Part Pull'&&['active','paused'].includes(s.state));
-      if(!existingPP){
-        const {error:ppe}=await sb.from('stations').insert({
-          line_id:lineId,grp:'Part Pull',state:'active',
-          started_at:new Date().toISOString(),elapsed_ms:0,
-          done_at:null,note:null,sent_qty:0,remaining_qty:qty
-        });
-        if(ppe)throw ppe;
-      }
-    }
     document.getElementById('inputSO').value='';
     document.getElementById('inputItem').value='';
     document.getElementById('inputQty').value='';
@@ -983,7 +921,7 @@ async function confirmStart(){
     document.getElementById('soSug').style.display='none';
     document.getElementById('inputItem').classList.remove('has-sug');
     document.getElementById('inputSO').focus();
-    showToast(team==='Cutting'?'Started: '+so+' — Cutting + Part Pull / Da bat dau':'Started: '+so+' / '+item);
+    showToast('Started: '+so+' / '+item);
     await loadAll();
   }catch(err){console.error(err);setSyncDot('error');showToast('Error starting','red');}
 }
@@ -991,7 +929,7 @@ async function confirmStart(){
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
 async function pauseJob(sid){
   const j=jobs.find(x=>x.stationId===sid);if(!j)return;
-  const add=j.startedAt?Date.now()-j.startedAt:0;
+  const add=Date.now()-j.startedAt;
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',sid);await loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
@@ -1079,7 +1017,7 @@ async function confirmTestComplete(){
 }
 
 async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
-  const add=j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0;
+  const add=j.state==='active'?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
   setSyncDot('syncing');
   try{
@@ -1093,45 +1031,25 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
       // Mark line fully done
       await sb.from('lines').update({fully_done:true}).eq('id',j.lineId);
       showToast('ORDER COMPLETE: '+j.so+' / '+j.item,'green');
-    } else if(j.group==='Part Pull'){
-      // ── PART PULL DONE ──────────────────────────────────────────────────────
-      // Part Pull finishing does NOT create its own queue entry.
-      // It only unlocks the existing Cutting queue entry for this line.
-      const line=lines.find(l=>l.id===j.lineId);
-      if(line){
-        const lockedQueue=line.stations.filter(s=>s.state==='queue'&&s.note==='PART_PULL_PENDING');
-        for(const qs of lockedQueue){
-          await sb.from('stations').update({note:null}).eq('id',qs.id);
-        }
-        if(lockedQueue.length>0){
-          showToast('✅ Parts ready — Queue unlocked / Hang cho da mo khoa','green');
-        } else {
-          // Cutting not done yet — just mark Part Pull done, no queue needed
-          showToast('✅ Part Pull complete / Part Pull hoan thanh','green');
-        }
-      }
     } else {
-      // ── NORMAL STATION DONE ─────────────────────────────────────────────────
-      // Check if Part Pull is still active for this line (only relevant for Cutting)
-      const isCutting=j.group==='Cutting';
-      const partPullActive=isCutting&&lines.find(l=>l.id===j.lineId)
-        ?.stations?.some(s=>s.grp==='Part Pull'&&['active','paused'].includes(s.state));
-      const queueNote=partPullActive?'PART_PULL_PENDING':null;
-
       // Create queue entry — stores exact sent qty
       await sb.from('stations').insert({
         line_id:j.lineId,grp:j.group,
         state:'queue',started_at:new Date().toISOString(),
         elapsed_ms:0,done_at:nowStr(),
-        note:queueNote,sent_qty:sentQty,remaining_qty:0,
+        note:null,sent_qty:sentQty,remaining_qty:0,
         received_qty:sentQty,from_grp:j.group,
         is_partial:sentQty<(parseInt(j.totalQty)||0)
       });
 
-      // If remaining > 0, create waiting station
+      // If remaining > 0, update the current job's remaining OR create waiting
       if(remaining>0){
+        // Check if this was a waiting job (partial send from waiting)
         if(j.state==='waiting'){
+          // Update the waiting station with new remaining
           await sb.from('stations').update({remaining_qty:remaining,sent_qty:sentQty}).eq('id',sid);
+          // Re-mark as waiting (we marked done above, need to undo that and keep it active)
+          // Actually: mark done, create new waiting with remaining
           await sb.from('stations').insert({
             line_id:j.lineId,grp:j.group,
             state:'waiting',started_at:new Date().toISOString(),
@@ -1140,6 +1058,7 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
             received_qty:availableQty,is_partial:true
           });
         } else {
+          // Regular active job with partial send — create waiting
           await sb.from('stations').insert({
             line_id:j.lineId,grp:j.group,
             state:'waiting',started_at:new Date().toISOString(),
@@ -1165,13 +1084,8 @@ function openTakeModal(qid){
 }
 async function confirmTake(){
   const team=document.getElementById('takeTeamSel').value;
-  if(!team){showToast('Select your team / Chon nhom cua ban');return;}
+  if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
-  // Block if Part Pull not yet done
-  if(qi.note==='PART_PULL_PENDING'){
-    showToast('⚠️ Part Pull not done yet / Part Pull chua xong','red');
-    return;
-  }
   closeModal('takeModal');
   setSyncDot('syncing');
   try{
@@ -1250,8 +1164,8 @@ function getCurrentStation(lineId){
     const sh=shortGrp(j.group);
     const qtyInfo=j.isPartial?` (${j.displayQty} pcs)`:'';
     if(j.state==='active')parts.push({type:'active',label:`Dang o ${sh}${qtyInfo} / At ${sh}`});
-    else if(j.state==='paused')parts.push({type:'paused',label:`Paused at ${sh}${qtyInfo} / Tam dung tai ${sh}`});
-    else if(j.state==='waiting')parts.push({type:'waiting',label:`Remaining at ${sh} (${j.remainingQty} pcs) / Con lai tai ${sh}`});
+    else if(j.state==='paused')parts.push({type:'paused',label:`Tam dung tai ${sh}${qtyInfo} / Paused at ${sh}`});
+    else if(j.state==='waiting')parts.push({type:'waiting',label:`Con lai tai ${sh} (${j.remainingQty} pcs) / Remaining at ${sh}`});
   });
   queueForLine.forEach(qi=>{
     const sh=shortGrp(qi.fromGroup);
@@ -1271,6 +1185,16 @@ function renderWorker(){
   const searchQ=(document.getElementById('jobSearch').value||'').trim().toUpperCase();
   let myJobs=(team&&!isAll)?jobs.filter(j=>j.group===team):jobs;
   if(searchQ)myJobs=myJobs.filter(j=>j.so.includes(searchQ)||j.item.includes(searchQ));
+  // Jobs with a note on any station of their SO come first
+  const soHasNote=so=>{
+    const soLines=lines.filter(l=>l.so===so);
+    return soLines.some(l=>l.stations.some(s=>s.note&&s.note.trim()));
+  };
+  myJobs=[...myJobs].sort((a,b)=>{
+    const an=soHasNote(a.so)?0:1;
+    const bn=soHasNote(b.so)?0:1;
+    return an-bn;
+  });
 
   document.getElementById('activeCount').textContent=(team&&!isAll)?jobs.filter(j=>j.group===team).length:jobs.length;
   document.getElementById('statActive').textContent=jobs.length;
@@ -1286,10 +1210,7 @@ function renderWorker(){
   }
 
   jl.innerHTML=myJobs.map(j=>{
-    // For waiting jobs, elapsed still counts from when the waiting state started
     const el=j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0);
-    // Waiting timer: count from started_at of the waiting record
-    const waitEl=j.state==='waiting'&&j.startedAt?Date.now()-j.startedAt:0;
     const isWaiting=j.state==='waiting';
     const isFinal=j.group===FINAL;
     const slCls=isWaiting?'sl-purple':j.state==='paused'?'sl-amber':'sl-green';
@@ -1306,45 +1227,17 @@ function renderWorker(){
       const remaining=j.remainingQty||0;
       const total=j.totalQty||0;
       const pct=total>0?Math.round(sent/total*100):0;
-
-      // Build per-destination breakdown from stations that received from this group
-      const line=lines.find(l=>l.id===j.lineId);
-      const sentBreakdown=[];
-      if(line){
-        // Still in queue — not yet picked up by anyone
-        const queueSent=line.stations.filter(s=>s.state==='queue'&&s.from_grp===j.group&&s.sent_qty>0);
-        queueSent.forEach(s=>sentBreakdown.push({dest:'In Queue',qty:s.sent_qty,state:'queue'}));
-        // Taken = was in queue, now picked up and converted to active
-        const activeSent=line.stations.filter(s=>['active','paused'].includes(s.state)&&s.from_grp===j.group&&s.received_qty>0);
-        activeSent.forEach(s=>sentBreakdown.push({dest:s.grp,qty:s.received_qty,state:s.state}));
-        // Done at next station
-        const doneSent=line.stations.filter(s=>s.state==='done'&&s.from_grp===j.group&&s.received_qty>0);
-        doneSent.forEach(s=>sentBreakdown.push({dest:s.grp,qty:s.received_qty,state:'done'}));
-      }
-
-      const breakdownHtml=sentBreakdown.length>0
-        ? sentBreakdown.map(b=>{
-            const col=b.state==='done'?'var(--green)':b.state==='queue'?'#3949ab':'var(--blue-m)';
-            const icon=b.state==='done'?'✅':b.state==='queue'?'🕐':'🔵';
-            return `<div class="qty-progress-row" style="padding-left:12px;">
-              <span class="qp-label" style="font-size:10px;">${icon} ${shortGrp(b.dest)}</span>
-              <span class="qp-val" style="font-size:11px;color:${col};">${b.qty} pcs</span>
-            </div>`;
-          }).join('')
-        : '';
-
       qtyBlock=`<div class="qty-progress">
         <div class="qty-progress-row">
-          <span class="qp-label">Total order / Tong don hang</span>
+          <span class="qp-label">Tong don hang / Total order</span>
           <span class="qp-val total">${total} pcs</span>
         </div>
         <div class="qty-progress-row">
-          <span class="qp-label">✅ Sent forward / Da gui di</span>
+          <span class="qp-label">✅ Dang gui di / Sent forward</span>
           <span class="qp-val sent">${sent} pcs</span>
         </div>
-        ${breakdownHtml}
         <div class="qty-progress-row">
-          <span class="qp-label">⏳ Remaining here / Con lai day</span>
+          <span class="qp-label">⏳ Con lai tai day / Remaining here</span>
           <span class="qp-val remaining">${remaining} pcs</span>
         </div>
         <div class="qp-bar-wrap"><div class="qp-bar-fill" style="width:${pct}%"></div></div>
@@ -1361,12 +1254,12 @@ function renderWorker(){
       }
       // Waiting jobs show "Send Rest" button
       doneBtn=isWaiting
-        ?`<button class="btn-act btn-send" onclick="openDoneModal('${j.stationId}')"><span>SEND REST</span><span class="vn">Gui phan con lai</span></button>`
-        :`<button class="btn-act btn-done" onclick="openDoneModal('${j.stationId}')"><span>DONE</span><span class="vn">Hoan thanh</span></button>`;
+        ?`<button class="btn-act btn-send" onclick="openDoneModal('${j.stationId}')"><span>SEND REST</span><span class="vn">Gui not</span></button>`
+        :`<button class="btn-act btn-done" onclick="openDoneModal('${j.stationId}')"><span>DONE</span><span class="vn">Xong</span></button>`;
       noteBtn=`<button class="btn-act btn-note" onclick="openNoteModal('${j.stationId}')" title="Note">📝</button>`;
     }
     const actionRow=(actBtns||doneBtn||noteBtn)?`<div class="action-row">${actBtns}${noteBtn}${doneBtn}</div>`:'';
-    const hint=isFinal&&!isAll&&!isWaiting?`<div class="complete-hint">DONE = ORDER COMPLETE / Hoan thanh toan bo don hang</div>`:'';
+    const hint=isFinal&&!isAll&&!isWaiting?`<div class="complete-hint">DONE = ORDER COMPLETE / Hoan thanh toan bo</div>`:'';
 
     return `<div class="job-card ${cardCls}">
       <div class="sl ${slCls}"></div>
@@ -1379,10 +1272,7 @@ function renderWorker(){
       </div>
       ${qtyBlock}
       ${noteDisp}
-      ${!isWaiting
-        ?`<div class="timer-box"><span class="dot ${dotCls}"></span><span class="timer">${formatMs(el)}</span>${stateTag}</div>`
-        :`<div class="timer-box"><span class="dot waiting"></span><span class="timer" style="color:#7b1fa2;">${formatMs(waitEl)}</span><span class="timer-state" style="background:#F3E5F5;color:#6a1b9a;">WAITING</span></div>`
-      }
+      ${!isWaiting?`<div class="timer-box"><span class="dot ${dotCls}"></span><span class="timer">${formatMs(el)}</span>${stateTag}</div>`:''}
       ${actionRow}${hint}
     </div>`;
   }).join('');
@@ -1429,21 +1319,22 @@ function renderDonePanel(){
 // ── RENDER QUEUE ──────────────────────────────────────────────────────────────
 function renderQueue(){
   const body=document.getElementById('queueBody');
-  if(!queueItems.length){
+  const searchQ=(document.getElementById('queueSearch')?.value||'').trim().toUpperCase();
+  let filtered=queueItems;
+  if(searchQ)filtered=filtered.filter(qi=>qi.so.includes(searchQ)||qi.item.includes(searchQ));
+  if(!filtered.length){
     body.innerHTML='<div class="queue-empty">No items in queue<br>Khong co san pham trong hang cho<br><br>When a team presses DONE, items appear here.</div>';
     return;
   }
-  body.innerHTML=queueItems.map(qi=>{
+  body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
-    const isPPPending=qi.note==='PART_PULL_PENDING';
-    return `<div class="q-card${isPPPending?' q-locked':''}">
+    return `<div class="q-card">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
         <div class="q-meta">
           <span class="q-from">✓ ${shortGrp(qi.fromGroup)}</span>
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
-          ${isPPPending?`<span class="q-pp-pending">⚠️ Part Pull pending / Chua san sang</span>`:''}
           · ${qi.queuedAt}
         </div>
       </div>
@@ -1451,8 +1342,8 @@ function renderQueue(){
         <div class="q-qty-n">${qi.qty}</div>
         <div class="q-qty-l">pcs</div>
       </div>
-      <button class="btn-take${isPPPending?' btn-take-locked':''}" onclick="openTakeModal('${qi.id}')" ${isPPPending?'disabled':''}>
-        ${isPPPending?'<span>🔒 LOCKED</span><span class="vn">Dang cho Part Pull</span>':'<span>TAKE</span><span class="vn">Nhan viec</span>'}
+      <button class="btn-take" onclick="openTakeModal('${qi.id}')">
+        <span>TAKE</span><span class="vn">Nhan</span>
       </button>
     </div>`;
   }).join('');
@@ -1550,113 +1441,49 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
-  const sq=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
-
-  // Filter helper
-  const match=(so,item)=>!sq||so.toUpperCase().includes(sq)||item.toUpperCase().includes(sq);
-
   // Active jobs section
-  const filteredJobs=jobs.filter(j=>match(j.so,j.item));
-  const activeRows=filteredJobs.map(j=>`<tr>
+  const activeRows=jobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${j.state==='active'?'var(--green-lt)':j.state==='paused'?'var(--amber-lt)':'#F3E5F5'};color:${j.state==='active'?'#1b5e20':j.state==='paused'?'var(--amber-dk)':'#6a1b9a'};">${j.state}</span></td>
-    <td style="display:flex;gap:6px;flex-wrap:wrap;">
-      <button class="btn-del" style="background:#E8F5E9;color:#1b5e20;border-color:#A5D6A7;" onclick="adminResetTimer('${j.stationId}','${j.so}','${j.item}')">⏱ Reset Timer</button>
+    <td style="display:flex;gap:6px;">
       <button class="btn-del" style="background:#E8EDF8;color:var(--blue-dk);border-color:#90CAF9;" onclick="adminUndo('${j.stationId}','${j.so}','${j.item}','${j.group}','${j.displayQty||j.totalQty}','${j.lineId}')">↩ Undo</button>
       <button class="btn-del" onclick="adminDeleteStation('${j.stationId}','${j.so}','${j.item}','${j.lineId}')">Delete</button>
     </td>
   </tr>`).join('');
 
   // Queue items section
-  const filteredQueue=queueItems.filter(qi=>match(qi.so,qi.item));
-  const queueRows=filteredQueue.map(qi=>`<tr>
+  const queueRows=queueItems.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const filteredCompleted=lines.filter(l=>l.fully_done&&match(l.so,l.item));
-  const completedRows=filteredCompleted.map(l=>`<tr>
+  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
   </tr>`).join('');
 
-  // Performance section
-  const perfRows=[];
-  lines.filter(l=>match(l.so,l.item)).forEach(l=>{
-    const qty=parseInt(l.qty)||0;
-    if(!qty)return;
-    const doneSts=l.stations.filter(s=>s.state==='done'&&s.elapsed_ms>0&&!['Part Pull'].includes(s.grp));
-    if(!doneSts.length)return;
-    const totalMs=doneSts.reduce((a,s)=>a+(s.elapsed_ms||0),0);
-    const totalMin=totalMs/60000;
-    const perPcs=qty>0?totalMin/qty:0;
-    const stationBreak=doneSts.map(s=>`${shortGrp(s.grp)}: ${formatMs(s.elapsed_ms||0)}`).join(' · ');
-    perfRows.push(`<tr>
-      <td style="font-weight:600;color:var(--blue);">${l.so}</td>
-      <td class="item-num" title="${l.item}">${l.item}</td>
-      <td>${l.qty}</td>
-      <td style="font-variant-numeric:tabular-nums;">${formatMs(totalMs)}</td>
-      <td style="font-weight:700;color:var(--blue-dk);font-variant-numeric:tabular-nums;">${perPcs>0?perPcs.toFixed(2)+' min/pcs':'--'}</td>
-      <td style="font-size:11px;color:var(--txt3);">${stationBreak}</td>
-    </tr>`);
-  });
-
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">📊 Performance — Time per Piece</div>
-      ${perfRows.length?`
-      <div style="padding:8px 16px;font-size:12px;color:var(--txt3);background:var(--bg2);border-bottom:1px solid var(--bdr3);">
-        Only completed stations shown. Active jobs excluded (not yet finished).
-      </div>
-      <table class="admin-table">
-        <thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Total Time</th><th>Per Pcs</th><th>Station Breakdown</th></tr></thead>
-        <tbody>${perfRows.join('')}</tbody>
-      </table>`:'<div class="admin-empty">No completed station data yet — finish some jobs first</div>'}
+      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
+      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">⏱ Shift Settings / Cai dat ca lam viec</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Baslangic</label>
-            <input type="time" id="shiftStartInput" value="${shiftStart}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Bitis</label>
-            <input type="time" id="shiftEndInput" value="${shiftEnd}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
-          </div>
-          <button onclick="saveShiftSettings()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;height:38px;">Save / Luu</button>
-        </div>
-        <div style="font-size:12px;color:var(--txt3);background:var(--bg2);padding:9px 12px;border-radius:var(--r-md);line-height:1.7;">
-          🕗 Shift starts automatically at the set time each day.<br>
-          ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
-          🕐 For overtime, just extend the end time here.
-        </div>
-      </div>
+      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
+      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${filteredJobs.length}${sq&&filteredJobs.length!==jobs.length?' of '+jobs.length:''})</div>
-      ${filteredJobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${filteredQueue.length}${sq&&filteredQueue.length!==queueItems.length?' of '+queueItems.length:''})</div>
-      ${filteredQueue.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">Completed Orders (${filteredCompleted.length}${sq&&filteredCompleted.length!==lines.filter(l=>l.fully_done).length?' of '+lines.filter(l=>l.fully_done).length:''})</div>
-      ${filteredCompleted.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
+      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr" style="color:var(--red);">⚠️ Danger Zone</div>
       <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);">Reset all timers to 0 — jobs stay, only elapsed time is cleared. Use before shift starts.</div>
-        <button class="btn-del" style="width:fit-content;padding:8px 16px;font-size:13px;background:#E8F5E9;color:#1b5e20;border-color:#A5D6A7;" onclick="adminResetAllTimers()">⏱ Reset ALL Timers</button>
-        <div style="font-size:13px;color:var(--txt2);margin-top:6px;">Delete all data — use only for testing / reset. Cannot be undone.</div>
+        <div style="font-size:13px;color:var(--txt2);">Delete all data — use only for testing / reset. Cannot be undone.</div>
         <button class="btn-del" style="width:fit-content;padding:8px 16px;font-size:13px;" onclick="adminDeleteAll()">🗑 Delete ALL Data</button>
       </div>
     </div>`;
@@ -1681,19 +1508,22 @@ async function confirmAdminDelete(){
   setSyncDot('syncing');
   try{
     if(adminDelType==='station'){
+      // Get the station before deleting to know sent_qty
+      const delStation=jobs.find(j=>j.stationId===adminDelId)||queueItems.find(q=>q.id===adminDelId);
       await sb.from('stations').delete().eq('id',adminDelId);
+      // Also find and fix any waiting station for same line
       if(adminDelLineId){
+        const waitingSt=lines.find(l=>l.id===adminDelLineId)?.stations?.find(s=>s.state==='waiting');
+        if(waitingSt){
+          // Reset waiting station — delete it so cutting shows clean
+          await sb.from('stations').delete().eq('id',waitingSt.id);
+        }
+        // Also delete queue entries for this line
         const line=lines.find(l=>l.id===adminDelLineId);
         if(line){
-          // Delete all related waiting and queue stations for this line
-          const relatedSts=line.stations.filter(s=>['waiting','queue'].includes(s.state));
-          for(const qs of relatedSts){
+          const queueSts=line.stations.filter(s=>s.state==='queue');
+          for(const qs of queueSts){
             await sb.from('stations').delete().eq('id',qs.id);
-          }
-          // Check if any stations remain for this line — if not, delete the line too
-          const {data:remaining}=await sb.from('stations').select('id').eq('line_id',adminDelLineId);
-          if(!remaining||remaining.length===0){
-            await sb.from('lines').delete().eq('id',adminDelLineId);
           }
         }
       }
@@ -1702,24 +1532,12 @@ async function confirmAdminDelete(){
       await sb.from('lines').delete().eq('id',adminDelId);
     }
     await loadAll();
-    showToast('Deleted / Da xoa','green');
+    showToast('Deleted — sync updated / Da xoa va cap nhat','green');
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
-async function adminResetAllTimers(){
-  if(!confirm('Reset ALL timers to 0?\nJobs will stay, only elapsed time is cleared.\n\nDat lai tat ca thoi gian ve 0?'))return;
-  setSyncDot('syncing');
-  try{
-    const now=new Date().toISOString();
-    for(const j of jobs){
-      await sb.from('stations').update({elapsed_ms:0,started_at:now}).eq('id',j.stationId);
-    }
-    await loadAll();
-    showToast('All timers reset to 0','green');
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error','red');}
-}
 async function adminDeleteAll(){
-  if(!confirm('Delete ALL data? This cannot be undone!\n\nXoa tat ca du lieu? Khong the hoan tac!'))return;
+  if(!confirm('Delete ALL data? This cannot be undone!\n\nTum veri silinsin mi? Geri alinamaz!'))return;
   setSyncDot('syncing');
   try{
     await sb.from('stations').delete().neq('id','00000000-0000-0000-0000-000000000000');
@@ -1755,7 +1573,7 @@ async function testRemainingChoice(choice){
         note:null,sent_qty:remaining,remaining_qty:0,
         received_qty:remaining,from_grp:j.group,is_partial:true
       });
-      showToast(remaining+' pcs → Queue / Gui vao hang cho');
+      showToast(remaining+' pcs → Queue / Hang cho');
     } else {
       // Keep remaining here as waiting
       await sb.from('stations').insert({
@@ -1765,31 +1583,19 @@ async function testRemainingChoice(choice){
         note:null,sent_qty:sentQty,remaining_qty:remaining,
         received_qty:availableQty,is_partial:true
       });
-      showToast(sentQty+' sent · '+remaining+' remaining here / Con lai');
+      showToast(sentQty+' complete · '+remaining+' waiting here / Con lai');
     }
     await loadAll();
   }catch(err){
     console.error(err);setSyncDot('error');showToast('Error / Loi','red');
   }
 }
-// ── ADMIN RESET TIMER ────────────────────────────────────────────────────────
-async function adminResetTimer(stationId,so,item){
-  if(!confirm(`Reset timer for ${so} / ${item}?\nThis will set elapsed time to 0.\n\nDat lai thoi gian ve 0?`))return;
-  setSyncDot('syncing');
-  try{
-    await sb.from('stations').update({
-      elapsed_ms:0,
-      started_at:new Date().toISOString()
-    }).eq('id',stationId);
-    await loadAll();
-    showToast('Timer reset to 0 / Da dat lai thoi gian','green');
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error','red');}
-}
+// ── ADMIN UNDO ────────────────────────────────────────────────────────────────
 let undoPending=null;
 function adminUndo(stationId,so,item,group,qty,lineId){
   undoPending={stationId,so,item,group,qty:parseInt(qty)||0,lineId};
   // Show confirm
-  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nHoan tac: Chuyen ${item} tu ${shortGrp(group)} ve hang cho?`))return;
+  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nGeri al: ${item} urununu ${shortGrp(group)} istasyonundan Queue ya gonder?`))return;
   executeUndo();
 }
 async function executeUndo(){
@@ -1824,148 +1630,10 @@ async function executeUndo(){
     showToast('Error undoing / Loi','red');
   }
 }
-// ── SHIFT LOGIC ───────────────────────────────────────────────────────────────
-let shiftStart='08:00';
-let shiftEnd='16:30';
-let shiftEndNotified=false;
-
-function loadShiftSettings(){
-  const s=localStorage.getItem('shaxon_shift_start');
-  const e=localStorage.getItem('shaxon_shift_end');
-  if(s)shiftStart=s;
-  if(e)shiftEnd=e;
-}
-function saveShiftSettings(){
-  const s=document.getElementById('shiftStartInput')?.value;
-  const e=document.getElementById('shiftEndInput')?.value;
-  if(!s||!e){showToast('Enter both times / Nhap ca hai gio','red');return;}
-  shiftStart=s;shiftEnd=e;
-  localStorage.setItem('shaxon_shift_start',s);
-  localStorage.setItem('shaxon_shift_end',e);
-  shiftEndNotified=false; // reset so end-of-shift can fire again today
-  updateShiftBar();
-  showToast('Shift times saved / Da luu gio ca lam viec','green');
-}
-function timeToMinutes(t){
-  const [h,m]=(t||'').split(':').map(Number);
-  return (h||0)*60+(m||0);
-}
-function getShiftInfo(){
-  const now=new Date();
-  const day=now.getDay(); // 0=Sunday, 6=Saturday
-  const isWeekend=day===0||day===6;
-  const nowMin=now.getHours()*60+now.getMinutes()+now.getSeconds()/60;
-  const startMin=timeToMinutes(shiftStart);
-  const endMin=timeToMinutes(shiftEnd);
-  const totalMin=endMin-startMin;
-  const elapsedMin=Math.max(0,nowMin-startMin);
-  const remainingMin=Math.max(0,endMin-nowMin);
-  const pct=totalMin>0?Math.min(100,Math.round(elapsedMin/totalMin*100)):0;
-  const isActive=!isWeekend&&nowMin>=startMin&&nowMin<endMin;
-  const isEnded=!isWeekend&&nowMin>=endMin;
-  const isWarning=remainingMin<=30&&isActive;
-  const isOvertime=isEnded&&elapsedMin>totalMin;
-  return{nowMin,startMin,endMin,totalMin,elapsedMin,remainingMin,pct,isActive,isEnded,isWarning,isOvertime,isWeekend};
-}
-function formatMinutes(m){
-  const h=Math.floor(Math.abs(m)/60),min=Math.floor(Math.abs(m)%60);
-  return h>0?h+'h '+pad(min)+'m':min+'m';
-}
-function fmt12(t){
-  const [h,m]=(t||'').split(':').map(Number);
-  const ap=h>=12?'PM':'AM';const hh=h%12||12;
-  return hh+':'+(m<10?'0'+m:m)+' '+ap;
-}
-function updateShiftBar(){
-  const bar=document.getElementById('shiftBar');
-  const fill=document.getElementById('sbFill');
-  const times=document.getElementById('sbTimes');
-  const elapsed=document.getElementById('sbElapsed');
-  const remaining=document.getElementById('sbRemaining');
-  if(!bar)return;
-  const si=getShiftInfo();
-  times.textContent=fmt12(shiftStart)+' → '+fmt12(shiftEnd);
-  fill.style.width=si.pct+'%';
-  fill.className='sb-progress-fill'+(si.isEnded?' ended':si.isWarning?' warning':'');
-  bar.className='shift-bar'+(si.isEnded?' ended':si.isWarning?' warning':'');
-  elapsed.textContent=formatMinutes(si.isEnded?si.totalMin:si.elapsedMin)+' worked';
-  if(si.isWeekend){
-    bar.className='shift-bar';
-    fill.style.width='0%';
-    elapsed.textContent='Weekend / Cuoi tuan';
-    remaining.textContent='Shift resumes Monday / Thu Hai bat dau lai';
-    remaining.style.color='rgba(255,255,255,.7)';
-  } else if(si.isEnded){
-    remaining.textContent='Shift ended / Ca lam viec da ket thuc';
-    remaining.style.color='#FF8A65';
-  } else if(si.isActive){
-    remaining.textContent=formatMinutes(si.remainingMin)+' left / Con lai';
-    remaining.style.color='rgba(255,255,255,.7)';
-  } else {
-    remaining.textContent=formatMinutes(si.startMin-si.nowMin)+' until shift / Den ca lam viec';
-    remaining.style.color='rgba(255,255,255,.7)';
-  }
-}
-let shiftStartNotified=false;
-async function checkShiftEnd(){
-  const si=getShiftInfo();
-  // ── SHIFT END → auto-pause all active jobs
-  if(si.isEnded&&!shiftEndNotified){
-    shiftEndNotified=true;
-    shiftStartNotified=false;
-    const activeJobs=jobs.filter(j=>j.state==='active');
-    if(activeJobs.length>0){
-      showShiftEndAlert(activeJobs.length);
-      setSyncDot('syncing');
-      try{
-        for(const j of activeJobs){
-          const add=j.startedAt?Date.now()-j.startedAt:0;
-          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
-        }
-        await loadAll();
-        showToast('⏸ Shift ended — '+activeJobs.length+' jobs paused / '+activeJobs.length+' viec tam dung','red');
-      }catch(e){setSyncDot('error');}
-    } else {
-      showToast('⏰ Shift ended / Ca lam viec da ket thuc','red');
-    }
-  }
-  // ── SHIFT START → auto-resume all paused jobs
-  if(si.isActive&&!shiftStartNotified){
-    shiftStartNotified=true;
-    shiftEndNotified=false;
-    const pausedJobs=jobs.filter(j=>j.state==='paused');
-    if(pausedJobs.length>0){
-      setSyncDot('syncing');
-      try{
-        const resumeNow=new Date().toISOString();
-        for(const j of pausedJobs){
-          await sb.from('stations').update({state:'active',started_at:resumeNow}).eq('id',j.stationId);
-        }
-        await loadAll();
-        showToast('▶ Shift started — '+pausedJobs.length+' jobs resumed / '+pausedJobs.length+' viec tiep tuc','green');
-      }catch(e){setSyncDot('error');}
-    }
-  }
-  // Reset flags when outside shift hours (between end and next start)
-  if(!si.isEnded&&!si.isActive){
-    shiftEndNotified=false;
-  }
-}
-function showShiftEndAlert(count){
-  // Create a temporary prominent alert
-  const alert=document.createElement('div');
-  alert.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#b71c1c;color:#fff;padding:14px 20px;text-align:center;font-size:15px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3);';
-  alert.innerHTML='⏰ Shift ended! '+count+' active job(s) auto-paused. / Ca lam viec da ket thuc! '+count+' viec da tam dung. <button onclick="this.parentNode.remove()" style="margin-left:16px;padding:5px 14px;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;cursor:pointer;font-size:13px;">OK / Dong y</button>';
-  document.body.appendChild(alert);
-  setTimeout(()=>{if(alert.parentNode)alert.remove();},12000);
-}
-
 // ── TICK ──────────────────────────────────────────────────────────────────────
 function tick(){
   updateClock();
-  updateShiftBar();
-  checkShiftEnd();
-  if(jobs.some(j=>j.state==='active'||j.state==='waiting')){
+  if(jobs.some(j=>j.state==='active')){
     renderWorker();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
   }
@@ -1973,9 +1641,7 @@ function tick(){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init(){
-  loadShiftSettings();
   updateClock();
-  updateShiftBar();
   await loadAll();
   setupRealtime();
   document.getElementById('connOverlay').classList.add('hidden');
