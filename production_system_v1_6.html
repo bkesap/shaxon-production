@@ -1185,14 +1185,10 @@ function renderWorker(){
   const searchQ=(document.getElementById('jobSearch').value||'').trim().toUpperCase();
   let myJobs=(team&&!isAll)?jobs.filter(j=>j.group===team):jobs;
   if(searchQ)myJobs=myJobs.filter(j=>j.so.includes(searchQ)||j.item.includes(searchQ));
-  // Jobs with a note on any station of their SO come first
-  const soHasNote=so=>{
-    const soLines=lines.filter(l=>l.so===so);
-    return soLines.some(l=>l.stations.some(s=>s.note&&s.note.trim()));
-  };
+  // Jobs with a note come first
   myJobs=[...myJobs].sort((a,b)=>{
-    const an=soHasNote(a.so)?0:1;
-    const bn=soHasNote(b.so)?0:1;
+    const an=(a.note&&a.note.trim())?0:1;
+    const bn=(b.note&&b.note.trim())?0:1;
     return an-bn;
   });
 
