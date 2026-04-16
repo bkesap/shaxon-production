@@ -99,6 +99,39 @@ body{font-family:var(--font);background:var(--bg2);}
 .readonly-banner{background:#FFF8E1;border-bottom:1px solid #FFE082;padding:6px 14px;font-size:12px;color:#e65100;text-align:center;flex-shrink:0;display:none;}
 .readonly-banner.on{display:block;}
 
+/* SHIFT BAR */
+.shift-bar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--blue-dk);flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.1);}
+.shift-bar.ended{background:#7b1a1a;}
+.shift-bar.warning{background:#7a4200;}
+.sb-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+.sb-times{font-size:12px;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.sb-progress-wrap{flex:1;background:rgba(255,255,255,.15);border-radius:4px;height:5px;min-width:60px;}
+.sb-progress-fill{height:5px;border-radius:4px;background:#4CAF50;transition:width .5s;}
+.sb-progress-fill.warning{background:#FF9800;}
+.sb-progress-fill.ended{background:#f44336;}
+.sb-elapsed{font-size:12px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.sb-remaining{font-size:11px;color:rgba(255,255,255,.7);font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+/* BULK SO */
+.bulk-bar{background:var(--bg1);border-bottom:1px solid var(--bdr3);flex-shrink:0;display:none;}
+.bulk-bar.open{display:block;}
+.bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
+.bulk-so-label{font-size:11px;font-weight:500;color:var(--txt2);}
+.bulk-so-val{font-size:15px;font-weight:700;color:var(--blue);}
+.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;}
+.bulk-row{display:flex;align-items:center;gap:8px;}
+.bulk-item-wrap{flex:1;position:relative;}
+.bulk-item{width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);}
+.bulk-item:focus{border-color:var(--blue-m);}
+.bulk-item.has-sug{border-color:var(--blue-m);border-bottom-left-radius:0;border-bottom-right-radius:0;}
+.bulk-qty{width:80px;padding:8px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);}
+.bulk-remove{width:30px;height:34px;border:none;background:var(--red-lt);color:var(--red);border-radius:var(--r-md);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.bulk-add-btn{display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--blue-lt);color:var(--blue);border:1px dashed var(--blue-m);border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:500;margin:0 14px 10px;}
+.bulk-footer{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--bdr3);background:var(--bg2);}
+.bulk-start-btn{flex:1;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.3px;}
+.bulk-start-btn:active{opacity:.85;}
+.bulk-cancel-btn{padding:10px 16px;background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);font-size:13px;font-weight:500;cursor:pointer;}
+
 /* MAIN BODY */
 .main-body{display:flex;flex:1;overflow:hidden;}
 .jobs-panel{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--bdr3);min-width:0;}
@@ -362,7 +395,7 @@ body{font-family:var(--font);background:var(--bg2);}
 <!-- NAV -->
 <div class="nav">
   <div class="nav-brand">
-    <img class="nav-brand-logo" src="/mnt/user-data/uploads/Screenshot_2026-04-12_at_1_58_08_PM.png" onerror="this.style.display='none'" alt="Shaxon"/>
+    <img class="nav-brand-logo" src="logo.png" onerror="this.style.display='none'" alt="Shaxon"/>
     <div>
       <div class="nav-brand-txt">SHAXON</div>
       <div class="nav-brand-sub">Production</div>
@@ -404,7 +437,34 @@ body{font-family:var(--font);background:var(--bg2);}
       <input type="number" id="inputQty" placeholder="100" min="1"/>
     </div>
     <button class="start-btn" onclick="handleStart()">START</button>
+    <button class="start-btn" style="background:var(--blue-m);font-size:13px;padding:0 12px;" onclick="openBulkSO()" title="Add multiple items for one SO">+ Add SO</button>
   </div>
+
+  <!-- BULK SO BAR -->
+  <div class="bulk-bar" id="bulkBar">
+    <div class="bulk-top">
+      <span class="bulk-so-label">Sales Order:</span>
+      <span class="bulk-so-val" id="bulkSODisplay">—</span>
+      <span style="font-size:11px;color:var(--txt3);margin-left:4px;">· Add all items below then press START ALL</span>
+    </div>
+    <div class="bulk-rows" id="bulkRows"></div>
+    <div class="bulk-add-btn" onclick="addBulkRow()">＋ Add Item Row <span style="font-size:10px;color:var(--txt3);">/ Them hang</span></div>
+    <div class="bulk-footer">
+      <button class="bulk-cancel-btn" onclick="closeBulkSO()">Cancel / Iptal</button>
+      <button class="bulk-start-btn" onclick="handleBulkStart()">✓ START ALL <span style="font-size:11px;font-weight:400;opacity:.8;">/ Baslat hepsini</span></button>
+    </div>
+  </div>
+
+  <!-- SHIFT BAR -->
+  <div class="shift-bar" id="shiftBar">
+    <span class="sb-label">⏱ Shift</span>
+    <span class="sb-times" id="sbTimes">8:00 AM → 4:30 PM</span>
+    <div class="sb-progress-wrap"><div class="sb-progress-fill" id="sbFill" style="width:0%"></div></div>
+    <span class="sb-elapsed" id="sbElapsed">0h 00m</span>
+    <span style="color:rgba(255,255,255,.3)">·</span>
+    <span class="sb-remaining" id="sbRemaining">8h 30m left</span>
+  </div>
+
   <div class="readonly-banner" id="readonlyBanner">👁 View only — Select a specific team to start jobs</div>
   <div class="status-bar">
     <div><span class="status-team" id="teamDisplay">-- Select Team --</span><span class="sync-dot" id="syncDot"></span></div>
@@ -492,10 +552,6 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
-        <div class="job-search-wrap" style="margin-left:0;">
-          <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" spellcheck="false" style="width:180px;"/>
-        </div>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -1460,11 +1516,8 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
-  const sq=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
-  const filterFn=x=>!sq||(x.so&&x.so.includes(sq))||(x.item&&x.item.toUpperCase().includes(sq));
   // Active jobs section
-  const filteredJobs=jobs.filter(filterFn);
-  const activeRows=filteredJobs.map(j=>`<tr>
+  const activeRows=jobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -1476,16 +1529,14 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const filteredQueue=queueItems.filter(filterFn);
-  const queueRows=filteredQueue.map(qi=>`<tr>
+  const queueRows=queueItems.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const filteredCompleted=lines.filter(l=>l.fully_done&&filterFn(l));
-  const completedRows=filteredCompleted.map(l=>`<tr>
+  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
@@ -1493,16 +1544,37 @@ function renderAdmin(){
 
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${filteredJobs.length}${sq?' / '+jobs.length:''})</div>
-      ${filteredJobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
+      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${filteredQueue.length}${sq?' / '+queueItems.length:''})</div>
-      ${filteredQueue.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
+      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Completed Orders (${filteredCompleted.length}${sq?' / '+lines.filter(l=>l.fully_done).length:''})</div>
-      ${filteredCompleted.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
+      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-hdr">⏱ Shift Settings / Cai dat ca lam viec</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Baslangic</label>
+            <input type="time" id="shiftStartInput" value="${shiftStart}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Bitis</label>
+            <input type="time" id="shiftEndInput" value="${shiftEnd}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
+          </div>
+          <button onclick="saveShiftSettings()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;height:38px;">Save / Luu</button>
+        </div>
+        <div style="font-size:12px;color:var(--txt3);background:var(--bg2);padding:9px 12px;border-radius:var(--r-md);line-height:1.7;">
+          🕗 Shift starts automatically at the set time.<br>
+          ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
+          🔁 For overtime, just extend the end time here.
+        </div>
+      </div>
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr" style="color:var(--red);">⚠️ Danger Zone</div>
@@ -1654,9 +1726,269 @@ async function executeUndo(){
     showToast('Error undoing / Loi','red');
   }
 }
+// ── SHIFT LOGIC ───────────────────────────────────────────────────────────────
+let shiftStart='08:00';
+let shiftEnd='16:30';
+let shiftEndNotified=false;
+
+function loadShiftSettings(){
+  const s=localStorage.getItem('shaxon_shift_start');
+  const e=localStorage.getItem('shaxon_shift_end');
+  if(s)shiftStart=s;
+  if(e)shiftEnd=e;
+}
+function saveShiftSettings(){
+  const s=document.getElementById('shiftStartInput')?.value;
+  const e=document.getElementById('shiftEndInput')?.value;
+  if(!s||!e){showToast('Enter both times','red');return;}
+  shiftStart=s;shiftEnd=e;
+  localStorage.setItem('shaxon_shift_start',s);
+  localStorage.setItem('shaxon_shift_end',e);
+  shiftEndNotified=false;
+  updateShiftBar();
+  showToast('Shift times saved / Da luu gio ca lam viec','green');
+}
+function timeToMinutes(t){
+  const [h,m]=(t||'').split(':').map(Number);
+  return (h||0)*60+(m||0);
+}
+function getShiftInfo(){
+  const now=new Date();
+  const day=now.getDay();
+  const isWeekend=day===0||day===6;
+  const nowMin=now.getHours()*60+now.getMinutes()+now.getSeconds()/60;
+  const startMin=timeToMinutes(shiftStart);
+  const endMin=timeToMinutes(shiftEnd);
+  const totalMin=endMin-startMin;
+  const elapsedMin=Math.max(0,nowMin-startMin);
+  const remainingMin=Math.max(0,endMin-nowMin);
+  const pct=totalMin>0?Math.min(100,Math.round(elapsedMin/totalMin*100)):0;
+  const isActive=!isWeekend&&nowMin>=startMin&&nowMin<endMin;
+  const isEnded=!isWeekend&&nowMin>=endMin;
+  const isWarning=remainingMin<=30&&isActive;
+  return{nowMin,startMin,endMin,totalMin,elapsedMin,remainingMin,pct,isActive,isEnded,isWarning,isWeekend};
+}
+function formatMinutes(m){
+  const h=Math.floor(Math.abs(m)/60),min=Math.floor(Math.abs(m)%60);
+  return h>0?h+'h '+pad(min)+'m':min+'m';
+}
+function fmt12(t){
+  const [h,m]=(t||'').split(':').map(Number);
+  const ap=h>=12?'PM':'AM';const hh=h%12||12;
+  return hh+':'+(m<10?'0'+m:m)+' '+ap;
+}
+function updateShiftBar(){
+  const bar=document.getElementById('shiftBar');
+  const fill=document.getElementById('sbFill');
+  const times=document.getElementById('sbTimes');
+  const elapsed=document.getElementById('sbElapsed');
+  const remaining=document.getElementById('sbRemaining');
+  if(!bar)return;
+  const si=getShiftInfo();
+  times.textContent=fmt12(shiftStart)+' → '+fmt12(shiftEnd);
+  fill.style.width=si.pct+'%';
+  fill.className='sb-progress-fill'+(si.isEnded?' ended':si.isWarning?' warning':'');
+  bar.className='shift-bar'+(si.isEnded?' ended':si.isWarning?' warning':'');
+  elapsed.textContent=formatMinutes(si.isEnded?si.totalMin:si.elapsedMin)+' worked';
+  if(si.isWeekend){
+    bar.className='shift-bar';fill.style.width='0%';
+    elapsed.textContent='Weekend / Cuoi tuan';
+    remaining.textContent='Resumes Monday / Pazartesi baslar';
+    remaining.style.color='rgba(255,255,255,.7)';
+  } else if(si.isEnded){
+    remaining.textContent='Shift ended / Ca da ket thuc';
+    remaining.style.color='#FF8A65';
+  } else if(si.isActive){
+    remaining.textContent=formatMinutes(si.remainingMin)+' left / Con lai';
+    remaining.style.color='rgba(255,255,255,.7)';
+  } else {
+    remaining.textContent=formatMinutes(si.startMin-si.nowMin)+' until shift / Den ca';
+    remaining.style.color='rgba(255,255,255,.7)';
+  }
+}
+async function checkShiftEnd(){
+  const si=getShiftInfo();
+  if(si.isEnded&&!shiftEndNotified){
+    shiftEndNotified=true;
+    const activeJobs=jobs.filter(j=>j.state==='active');
+    if(activeJobs.length>0){
+      const alert=document.createElement('div');
+      alert.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#b71c1c;color:#fff;padding:14px 20px;text-align:center;font-size:15px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3);';
+      alert.innerHTML='⏰ Shift ended! '+activeJobs.length+' active job(s) auto-paused. / Ca lam viec da ket thuc! '+activeJobs.length+' viec da tam dung. <button onclick="this.parentNode.remove()" style="margin-left:16px;padding:5px 14px;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;cursor:pointer;font-size:13px;">OK</button>';
+      document.body.appendChild(alert);
+      setTimeout(()=>{if(alert.parentNode)alert.remove();},12000);
+      setSyncDot('syncing');
+      try{
+        for(const j of activeJobs){
+          const add=Date.now()-j.startedAt;
+          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
+        }
+        await loadAll();
+        showToast('⏸ Shift ended — '+activeJobs.length+' jobs paused','red');
+      }catch(e){setSyncDot('error');}
+    } else {
+      showToast('⏰ Shift ended / Ca lam viec da ket thuc','red');
+    }
+  }
+  if(!si.isEnded&&si.isActive)shiftEndNotified=false;
+}
+
+// ── BULK SO ───────────────────────────────────────────────────────────────────
+let bulkSOValue='';
+let bulkRowCount=0;
+
+function openBulkSO(){
+  const team=document.getElementById('inputTeam').value;
+  if(!team||team==='__ALL__'){showToast('Select a specific team first / Once ekip sec');return;}
+  const so=document.getElementById('inputSO').value.trim().toUpperCase();
+  if(!so){showToast('Enter Sales Order No first');return;}
+  bulkSOValue=so;
+  document.getElementById('bulkSODisplay').textContent=so;
+  document.getElementById('bulkRows').innerHTML='';
+  bulkRowCount=0;
+  addBulkRow();
+  addBulkRow();
+  document.getElementById('bulkBar').classList.add('open');
+  // focus first item input
+  setTimeout(()=>{
+    const first=document.querySelector('.bulk-item');
+    if(first)first.focus();
+  },50);
+}
+
+function closeBulkSO(){
+  document.getElementById('bulkBar').classList.remove('open');
+  document.getElementById('bulkRows').innerHTML='';
+  bulkRowCount=0;
+}
+
+function addBulkRow(){
+  bulkRowCount++;
+  const id=bulkRowCount;
+  const row=document.createElement('div');
+  row.className='bulk-row';
+  row.id='bulkRow_'+id;
+  row.innerHTML=`
+    <div class="bulk-item-wrap">
+      <input class="bulk-item" type="text" id="bulkItem_${id}" placeholder="Item No / Ma san pham"
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+        oninput="this.value=this.value.toUpperCase();buildBulkItemSug(${id})"
+        onblur="setTimeout(()=>hideBulkSug(${id}),200)"
+        onfocus="buildBulkItemSug(${id})"/>
+      <div class="sug-box" id="bulkSug_${id}" style="display:none;"></div>
+    </div>
+    <input class="bulk-qty" type="number" id="bulkQty_${id}" placeholder="Qty" min="1"/>
+    <button class="bulk-remove" onclick="removeBulkRow(${id})" title="Remove">×</button>`;
+  document.getElementById('bulkRows').appendChild(row);
+}
+
+function removeBulkRow(id){
+  const row=document.getElementById('bulkRow_'+id);
+  if(row)row.remove();
+}
+
+function buildBulkItemSug(id){
+  const typed=(document.getElementById('bulkItem_'+id)?.value||'').trim().toUpperCase();
+  const box=document.getElementById('bulkSug_'+id);
+  if(!box)return;
+  const so=bulkSOValue;
+  const soLines=lines.filter(l=>l.so===so);
+  const candidates=soLines.filter(l=>{
+    if(typed&&!l.item.includes(typed))return false;
+    if(l.fully_done)return false;
+    return true;
+  });
+  if(!typed&&!soLines.length){box.style.display='none';return;}
+  if(!candidates.length){box.style.display='none';return;}
+  box.innerHTML='<div class="sug-hdr">Items for '+so+'</div>'+
+    candidates.slice(0,8).map(l=>`<div class="sug-row" onmousedown="selectBulkItem(${id},'${l.item}',${parseInt(l.qty)||0})">
+      <div class="sug-main"><div class="sug-no">${l.item}</div></div>
+      <div style="font-size:13px;font-weight:500;color:var(--blue-dk);">${l.qty}</div>
+    </div>`).join('');
+  document.getElementById('bulkItem_'+id).classList.add('has-sug');
+  box.style.display='block';
+}
+
+function selectBulkItem(id,item,qty){
+  const inp=document.getElementById('bulkItem_'+id);
+  const qtyInp=document.getElementById('bulkQty_'+id);
+  if(inp)inp.value=item;
+  if(qtyInp&&qty)qtyInp.value=qty;
+  hideBulkSug(id);
+}
+
+function hideBulkSug(id){
+  const box=document.getElementById('bulkSug_'+id);
+  const inp=document.getElementById('bulkItem_'+id);
+  if(box)box.style.display='none';
+  if(inp)inp.classList.remove('has-sug');
+}
+
+async function handleBulkStart(){
+  const team=document.getElementById('inputTeam').value;
+  if(!team||team==='__ALL__'){showToast('Select a team first');return;}
+  const so=bulkSOValue;
+  if(!so){showToast('No SO selected');return;}
+
+  // Collect all rows
+  const rows=document.querySelectorAll('.bulk-row');
+  const items=[];
+  for(const row of rows){
+    const id=row.id.replace('bulkRow_','');
+    const item=(document.getElementById('bulkItem_'+id)?.value||'').trim().toUpperCase();
+    const qty=parseInt(document.getElementById('bulkQty_'+id)?.value)||0;
+    if(!item||!qty)continue;
+    items.push({item,qty});
+  }
+  if(!items.length){showToast('Add at least one item / En az bir urun ekle');return;}
+
+  // Validate
+  for(const {item,qty} of items){
+    const existingLine=lines.find(l=>l.so===so&&l.item===item);
+    if(existingLine){
+      const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
+      if(activeHere){showToast(item+' already active at '+team,'red');return;}
+      const doneHere=existingLine.stations.find(s=>s.grp===team&&s.state==='done');
+      if(doneHere){showToast(item+' already completed at '+team,'red');return;}
+    }
+  }
+
+  setSyncDot('syncing');
+  let started=0;
+  try{
+    for(const {item,qty} of items){
+      let lineId;
+      const existingLine=lines.find(l=>l.so===so&&l.item===item);
+      if(existingLine){
+        lineId=existingLine.id;
+      } else {
+        const {data,error}=await sb.from('lines').insert({so,item,qty:qty+' pcs',fully_done:false}).select().single();
+        if(error)throw error;
+        lineId=data.id;
+      }
+      const {error:se}=await sb.from('stations').insert({
+        line_id:lineId,grp:team,state:'active',
+        started_at:new Date().toISOString(),elapsed_ms:0,
+        done_at:null,note:null,sent_qty:0,remaining_qty:qty
+      });
+      if(se)throw se;
+      started++;
+    }
+    closeBulkSO();
+    document.getElementById('inputSO').value='';
+    await loadAll();
+    showToast('✓ Started '+started+' items for '+so,'green');
+  }catch(err){
+    console.error(err);setSyncDot('error');
+    showToast('Error starting items / Hata','red');
+  }
+}
+
 // ── TICK ──────────────────────────────────────────────────────────────────────
 function tick(){
   updateClock();
+  updateShiftBar();
+  checkShiftEnd();
   if(jobs.some(j=>j.state==='active')){
     renderWorker();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
@@ -1665,7 +1997,9 @@ function tick(){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init(){
+  loadShiftSettings();
   updateClock();
+  updateShiftBar();
   await loadAll();
   setupRealtime();
   document.getElementById('connOverlay').classList.add('hidden');
