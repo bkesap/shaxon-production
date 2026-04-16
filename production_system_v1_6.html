@@ -403,6 +403,7 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
   <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
+  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);"></span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
 </div>
@@ -474,7 +475,7 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
   </div>
   <div class="main-body">
-    <div class="jobs-panel">
+    <div class="jobs-panel" style="border-right:none;">
       <div class="panel-hdr">
         <span class="panel-lbl">Active Jobs (<span id="activeCount">0</span>)</span>
         <div class="job-search-wrap">
@@ -486,15 +487,21 @@ body{font-family:var(--font);background:var(--bg2);}
         <div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>
       </div>
     </div>
-    <div class="done-panel">
-      <div class="panel-hdr"><span class="panel-lbl">Completed (<span id="statDone">0</span>)</span></div>
-      <div class="done-stats">
-        <div class="d-stat"><div class="d-stat-val" id="statActive">0</div><div class="d-stat-en">Active</div><div class="d-stat-vn">Dang lam</div></div>
-        <div class="d-stat"><div class="d-stat-val" id="statAvg">--</div><div class="d-stat-en">Avg Time</div><div class="d-stat-vn">TB TG</div></div>
+  </div>
+</div>
+
+<!-- ══ COMPLETED ══ -->
+<div class="page" id="page-completed">
+  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div class="panel-hdr" style="padding:10px 16px;">
+      <span class="panel-lbl">Completed Today (<span id="statDone">0</span>)</span>
+      <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
+        <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
+        <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
       </div>
-      <div class="done-scroll" id="doneList">
-        <div class="empty-done">Nothing completed yet<br>Chua co gi hoan thanh</div>
-      </div>
+    </div>
+    <div class="done-scroll" id="doneList" style="flex:1;overflow-y:auto;">
+      <div class="empty-done">Nothing completed yet<br>Chua co gi hoan thanh</div>
     </div>
   </div>
 </div>
@@ -739,6 +746,7 @@ function showPage(p,el){
   if(p==='dash')renderDash();
   if(p==='queue')renderQueue();
   if(p==='admin')renderAdmin();
+  if(p==='completed')renderDonePanel();
 }
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
@@ -1259,12 +1267,17 @@ function renderWorker(){
   document.getElementById('statDone').textContent=doneList.length;
   const times=doneList.map(d=>d.totalMs).filter(Boolean);
   document.getElementById('statAvg').textContent=times.length?formatMs(times.reduce((a,b)=>a+b,0)/times.length):'--';
+  // Update completed badge
+  const cb=document.getElementById('completedBadge');
+  cb.textContent=doneList.length;
+  cb.className='queue-badge'+(doneList.length>0?' on':'');
+  cb.style.background='var(--green)';
 
   const jl=document.getElementById('jobsList');
-  if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';renderDonePanel();return;}
+  if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';return;}
   if(!myJobs.length){
     jl.innerHTML=`<div class="empty-jobs">${isAll?'No active jobs anywhere':'No active jobs for <strong>'+team+'</strong><br>Enter order above and press START'}</div>`;
-    renderDonePanel();return;
+    return;
   }
 
   jl.innerHTML=myJobs.map(j=>{
@@ -1334,8 +1347,6 @@ function renderWorker(){
       ${actionRow}${hint}
     </div>`;
   }).join('');
-
-  renderDonePanel();
 }
 
 function renderDonePanel(){
