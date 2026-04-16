@@ -1806,17 +1806,17 @@ function updateShiftBar(){
     remaining.style.color='rgba(255,255,255,.7)';
   }
 }
+let shiftStartNotified=false;
+
 async function checkShiftEnd(){
   const si=getShiftInfo();
+
+  // ── Vardiya BITTI → tüm aktif işleri pause et
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
+    shiftStartNotified=false;
     const activeJobs=jobs.filter(j=>j.state==='active');
     if(activeJobs.length>0){
-      const alert=document.createElement('div');
-      alert.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#b71c1c;color:#fff;padding:14px 20px;text-align:center;font-size:15px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3);';
-      alert.innerHTML='⏰ Shift ended! '+activeJobs.length+' active job(s) auto-paused. / Ca lam viec da ket thuc! '+activeJobs.length+' viec da tam dung. <button onclick="this.parentNode.remove()" style="margin-left:16px;padding:5px 14px;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;cursor:pointer;font-size:13px;">OK</button>';
-      document.body.appendChild(alert);
-      setTimeout(()=>{if(alert.parentNode)alert.remove();},12000);
       setSyncDot('syncing');
       try{
         for(const j of activeJobs){
@@ -1824,13 +1824,31 @@ async function checkShiftEnd(){
           await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
         }
         await loadAll();
-        showToast('⏸ Shift ended — '+activeJobs.length+' jobs paused','red');
+        showToast('⏸ Vardiya bitti — '+activeJobs.length+' iş pause edildi / Shift ended','red');
       }catch(e){setSyncDot('error');}
     } else {
-      showToast('⏰ Shift ended / Ca lam viec da ket thuc','red');
+      showToast('⏰ Vardiya bitti / Shift ended','red');
     }
   }
-  if(!si.isEnded&&si.isActive)shiftEndNotified=false;
+
+  // ── Vardiya BASLADI → tüm paused işleri resume et
+  if(si.isActive&&!shiftStartNotified){
+    shiftStartNotified=true;
+    shiftEndNotified=false;
+    const pausedJobs=jobs.filter(j=>j.state==='paused');
+    if(pausedJobs.length>0){
+      setSyncDot('syncing');
+      try{
+        for(const j of pausedJobs){
+          await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId);
+        }
+        await loadAll();
+        showToast('▶ Vardiya başladı — '+pausedJobs.length+' iş devam ediyor / Shift started','green');
+      }catch(e){setSyncDot('error');}
+    } else {
+      showToast('🟢 Vardiya başladı / Shift started','green');
+    }
+  }
 }
 
 // ── BULK SO ───────────────────────────────────────────────────────────────────
