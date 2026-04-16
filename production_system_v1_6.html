@@ -451,8 +451,8 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="bulk-rows" id="bulkRows"></div>
     <div class="bulk-add-btn" onclick="addBulkRow()">＋ Add Item Row <span style="font-size:10px;color:var(--txt3);">/ Them hang</span></div>
     <div class="bulk-footer">
-      <button class="bulk-cancel-btn" onclick="closeBulkSO()">Cancel / Iptal</button>
-      <button class="bulk-start-btn" onclick="handleBulkStart()">✓ START ALL <span style="font-size:11px;font-weight:400;opacity:.8;">/ Baslat hepsini</span></button>
+      <button class="bulk-cancel-btn" onclick="closeBulkSO()">Cancel</button>
+      <button class="bulk-start-btn" onclick="handleBulkStart()">✓ START ALL</button>
     </div>
   </div>
 
@@ -1644,7 +1644,7 @@ async function confirmAdminDelete(){
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
 async function adminDeleteAll(){
-  if(!confirm('Delete ALL data? This cannot be undone!\n\nTum veri silinsin mi? Geri alinamaz!'))return;
+  if(!confirm('Delete ALL data? This cannot be undone!'))return;
   setSyncDot('syncing');
   try{
     await sb.from('stations').delete().neq('id','00000000-0000-0000-0000-000000000000');
