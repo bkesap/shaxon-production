@@ -698,6 +698,23 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="partPullModal">
+  <div class="modal-box">
+    <div class="modal-hdr blue">
+      <div class="modal-title">Also start Part Pull?</div>
+      <div class="modal-sub" id="partPullCtx"></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-msg">Cutting has started for this order. Should Part Pull also begin for the same item?</div>
+      <div class="confirm-grid" id="partPullGrid" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="confirmPartPull(false)">No — Cutting only</button>
+      <button class="btn-ok" onclick="confirmPartPull(true)">✓ Yes — Start Part Pull too</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -968,6 +985,8 @@ function handleStart(){
   document.getElementById('confirmModal').classList.add('open');
 }
 
+let partPullPending=null;
+
 async function confirmStart(){
   closeModal('confirmModal');
   const {team,so,item,qty,existingLine}=confirmPending;
@@ -996,7 +1015,51 @@ async function confirmStart(){
     document.getElementById('inputSO').focus();
     showToast('Started: '+so+' / '+item);
     await loadAll();
+
+    // If Cutting → ask about Part Pull
+    if(team==='Cutting'){
+      // Check Part Pull not already active/done for this item
+      const currentLine=lines.find(l=>l.so===so&&l.item===item);
+      const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
+      const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
+      if(!ppActive&&!ppDone){
+        partPullPending={so,item,qty,lineId:currentLine?.id||lineId};
+        document.getElementById('partPullCtx').textContent=so+' / '+item+' — '+qty+' pcs';
+        document.getElementById('partPullGrid').innerHTML=`
+          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
+          <span class="cg-lbl">Item No</span><span class="cg-val">${item}</span>
+          <span class="cg-lbl">Qty</span><span class="cg-val big">${qty} pcs</span>`;
+        document.getElementById('partPullModal').classList.add('open');
+      }
+    }
   }catch(err){console.error(err);setSyncDot('error');showToast('Error starting','red');}
+}
+
+async function confirmPartPull(yes){
+  closeModal('partPullModal');
+  if(!yes||!partPullPending){partPullPending=null;return;}
+  const pending=partPullPending;
+  partPullPending=null;
+  setSyncDot('syncing');
+  try{
+    const itemList=pending.bulk?pending.items:[{item:pending.item,qty:pending.qty}];
+    const so=pending.so;
+    let started=0;
+    for(const {item,qty} of itemList){
+      const currentLine=lines.find(l=>l.so===so&&l.item===item);
+      const lid=currentLine?.id;
+      if(!lid)continue;
+      const {error}=await sb.from('stations').insert({
+        line_id:lid,grp:'Part Pull',state:'active',
+        started_at:new Date().toISOString(),elapsed_ms:0,
+        done_at:null,note:null,sent_qty:0,remaining_qty:qty
+      });
+      if(error)throw error;
+      started++;
+    }
+    await loadAll();
+    showToast('✓ Part Pull started for '+started+' item(s) — '+so,'green');
+  }catch(err){console.error(err);setSyncDot('error');showToast('Error starting Part Pull','red');}
 }
 
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
@@ -2010,6 +2073,24 @@ async function handleBulkStart(){
     document.getElementById('inputSO').value='';
     await loadAll();
     showToast('✓ Started '+started+' items for '+so,'green');
+
+    // If Cutting → ask about Part Pull for all items
+    if(team==='Cutting'&&items.length>0){
+      const ppItems=items.filter(({item,qty})=>{
+        const currentLine=lines.find(l=>l.so===so&&l.item===item);
+        const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
+        const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
+        return !ppActive&&!ppDone;
+      });
+      if(ppItems.length>0){
+        partPullPending={so,items:ppItems,bulk:true};
+        document.getElementById('partPullCtx').textContent=so+' — '+ppItems.length+' item(s)';
+        document.getElementById('partPullGrid').innerHTML=`
+          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
+          <span class="cg-lbl">Items</span><span class="cg-val">${ppItems.map(x=>x.item).join(', ')}</span>`;
+        document.getElementById('partPullModal').classList.add('open');
+      }
+    }
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Error starting items / Hata','red');
