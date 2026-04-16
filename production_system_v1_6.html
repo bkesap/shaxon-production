@@ -492,6 +492,10 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
+        <div class="job-search-wrap" style="margin-left:0;">
+          <span class="job-search-ico">🔍</span>
+          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" spellcheck="false" style="width:180px;"/>
+        </div>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -1456,8 +1460,11 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
+  const sq=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
+  const filterFn=x=>!sq||(x.so&&x.so.includes(sq))||(x.item&&x.item.toUpperCase().includes(sq));
   // Active jobs section
-  const activeRows=jobs.map(j=>`<tr>
+  const filteredJobs=jobs.filter(filterFn);
+  const activeRows=filteredJobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -1469,14 +1476,16 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=queueItems.map(qi=>`<tr>
+  const filteredQueue=queueItems.filter(filterFn);
+  const queueRows=filteredQueue.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
+  const filteredCompleted=lines.filter(l=>l.fully_done&&filterFn(l));
+  const completedRows=filteredCompleted.map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
@@ -1484,16 +1493,16 @@ function renderAdmin(){
 
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
-      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      <div class="admin-section-hdr">Active Jobs (${filteredJobs.length}${sq?' / '+jobs.length:''})</div>
+      ${filteredJobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
-      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      <div class="admin-section-hdr">Queue (${filteredQueue.length}${sq?' / '+queueItems.length:''})</div>
+      ${filteredQueue.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
-      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      <div class="admin-section-hdr">Completed Orders (${filteredCompleted.length}${sq?' / '+lines.filter(l=>l.fully_done).length:''})</div>
+      ${filteredCompleted.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr" style="color:var(--red);">⚠️ Danger Zone</div>
