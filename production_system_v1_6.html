@@ -1637,11 +1637,11 @@ function renderAdmin(){
       <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
           <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Baslangic</label>
+            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Bat dau ca</label>
             <input type="time" id="shiftStartInput" value="${shiftStart}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Bitis</label>
+            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Ket thuc ca</label>
             <input type="time" id="shiftEndInput" value="${shiftEnd}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
           </div>
           <button onclick="saveShiftSettings()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;height:38px;">Save / Luu</button>
@@ -1768,7 +1768,7 @@ let undoPending=null;
 function adminUndo(stationId,so,item,group,qty,lineId){
   undoPending={stationId,so,item,group,qty:parseInt(qty)||0,lineId};
   // Show confirm
-  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nGeri al: ${item} urununu ${shortGrp(group)} istasyonundan Queue ya gonder?`))return;
+  if(!confirm(`Undo: Return ${qty} pcs of ${item} (${so}) from ${shortGrp(group)} back to Queue?\n\nReturn ${item} from ${shortGrp(group)} to Queue?`))return;
   executeUndo();
 }
 async function executeUndo(){
@@ -1790,7 +1790,7 @@ async function executeUndo(){
       line_id:lineId,grp:group,
       state:'queue',started_at:new Date().toISOString(),
       elapsed_ms:0,done_at:nowStr(),
-      note:'↩ Returned by Admin / Admin tarafindan iade edildi',
+      note:'↩ Returned by Admin',
       sent_qty:qty,remaining_qty:0,
       received_qty:qty,from_grp:group,
       is_partial:qty<totalQty
@@ -1870,7 +1870,7 @@ function updateShiftBar(){
   if(si.isWeekend){
     bar.className='shift-bar';fill.style.width='0%';
     elapsed.textContent='Weekend / Cuoi tuan';
-    remaining.textContent='Resumes Monday / Pazartesi baslar';
+    remaining.textContent='Resumes Monday / Thu Hai bat dau lai';
     remaining.style.color='rgba(255,255,255,.7)';
   } else if(si.isEnded){
     remaining.textContent='Shift ended / Ca da ket thuc';
@@ -1888,7 +1888,7 @@ let shiftStartNotified=false;
 async function checkShiftEnd(){
   const si=getShiftInfo();
 
-  // ── Vardiya BITTI → tüm aktif işleri pause et
+  // ── Shift ENDED → pause all active jobs
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
     shiftStartNotified=false;
@@ -1901,14 +1901,14 @@ async function checkShiftEnd(){
           await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
         }
         await loadAll();
-        showToast('⏸ Vardiya bitti — '+activeJobs.length+' iş pause edildi / Shift ended','red');
+        showToast('⏸ Shift ended — '+activeJobs.length+' job(s) paused / Ca ket thuc — tam dung','red');
       }catch(e){setSyncDot('error');}
     } else {
-      showToast('⏰ Vardiya bitti / Shift ended','red');
+      showToast('⏰ Shift ended / Ca lam viec ket thuc','red');
     }
   }
 
-  // ── Vardiya BASLADI → tüm paused işleri resume et
+  // ── Shift STARTED → resume all paused jobs
   if(si.isActive&&!shiftStartNotified){
     shiftStartNotified=true;
     shiftEndNotified=false;
@@ -1920,10 +1920,10 @@ async function checkShiftEnd(){
           await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId);
         }
         await loadAll();
-        showToast('▶ Vardiya başladı — '+pausedJobs.length+' iş devam ediyor / Shift started','green');
+        showToast('▶ Shift started — '+pausedJobs.length+' job(s) resumed / Ca bat dau','green');
       }catch(e){setSyncDot('error');}
     } else {
-      showToast('🟢 Vardiya başladı / Shift started','green');
+      showToast('🟢 Shift started / Ca lam viec bat dau','green');
     }
   }
 }
@@ -1934,7 +1934,7 @@ let bulkRowCount=0;
 
 function openBulkSO(){
   const team=document.getElementById('inputTeam').value;
-  if(!team||team==='__ALL__'){showToast('Select a specific team first / Once ekip sec');return;}
+  if(!team||team==='__ALL__'){showToast('Select a specific team first / Chon nhom cu the');return;}
   const so=document.getElementById('inputSO').value.trim().toUpperCase();
   if(!so){showToast('Enter Sales Order No first');return;}
   bulkSOValue=so;
@@ -2035,7 +2035,7 @@ async function handleBulkStart(){
     if(!item||!qty)continue;
     items.push({item,qty});
   }
-  if(!items.length){showToast('Add at least one item / En az bir urun ekle');return;}
+  if(!items.length){showToast('Add at least one item / Them it nhat mot san pham');return;}
 
   // Validate
   for(const {item,qty} of items){
@@ -2093,7 +2093,7 @@ async function handleBulkStart(){
     }
   }catch(err){
     console.error(err);setSyncDot('error');
-    showToast('Error starting items / Hata','red');
+    showToast('Error starting items','red');
   }
 }
 
