@@ -494,11 +494,15 @@ body{font-family:var(--font);background:var(--bg2);}
 <!-- ══ COMPLETED ══ -->
 <div class="page" id="page-completed">
   <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
-    <div class="panel-hdr" style="padding:10px 16px;">
-      <span class="panel-lbl">Completed Today (<span id="statDone">0</span>)</span>
-      <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
+    <div class="panel-hdr" style="padding:10px 16px;flex-wrap:wrap;gap:8px;">
+      <span class="panel-lbl">Completed (<span id="statDone">0</span>)</span>
+      <div style="display:flex;gap:14px;align-items:center;">
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
+      </div>
+      <div class="job-search-wrap" style="margin-left:auto;">
+        <span class="job-search-ico">🔍</span>
+        <input class="job-search" type="text" id="doneSearch" placeholder="Search SO or item..." oninput="renderDonePanel()" autocomplete="off" autocorrect="off" spellcheck="false" style="width:180px;"/>
       </div>
     </div>
     <div class="done-scroll" id="doneList" style="flex:1;overflow-y:auto;">
@@ -825,15 +829,18 @@ function rebuildDone(){
   doneList=[];
   lines.forEach(line=>{
     line.stations.filter(s=>s.state==='done').forEach(st=>{
+      // dateKey from started_at ISO string → "YYYY-MM-DD"
+      const dateKey=st.started_at?st.started_at.slice(0,10):'';
       doneList.push({
         so:line.so,item:line.item,qty:line.qty,
         group:st.grp,totalMs:st.elapsed_ms||0,
         doneAt:st.done_at||'',fullyDone:line.fully_done,
-        note:st.note||'',sentQty:st.sent_qty||0
+        note:st.note||'',sentQty:st.sent_qty||0,
+        dateKey
       });
     });
   });
-  doneList.sort((a,b)=>b.doneAt>a.doneAt?1:-1);
+  doneList.sort((a,b)=>b.dateKey>a.dateKey?1:b.dateKey<a.dateKey?-1:b.doneAt>a.doneAt?1:-1);
 }
 
 function rebuildQueue(){
@@ -1417,37 +1424,78 @@ function renderWorker(){
 
 function renderDonePanel(){
   const dl=document.getElementById('doneList');
-  if(!doneList.length){dl.innerHTML='<div class="empty-done">Nothing completed yet<br>Press DONE to see it here</div>';return;}
-  dl.innerHTML=doneList.map(d=>{
-    const line=lines.find(l=>l.so===d.so&&l.item===d.item);
-    const cs=line?getCurrentStation(line.id):null;
-    let csHtml='';
-    if(cs){
-      if(cs.type==='complete')csHtml=`<div class="cs-bar complete-now"><span class="cs-dot complete"></span>${cs.label}</div>`;
-      else if(cs.type==='waiting')csHtml=`<div class="cs-bar waiting-now"><span class="cs-dot waiting"></span>${cs.label}</div>`;
-      else if(cs.type==='queue')csHtml=`<div class="cs-bar waiting-now"><span class="cs-dot waiting"></span>🕐 ${cs.label}</div>`;
-      else if(cs.type==='paused')csHtml=`<div class="cs-bar paused-now"><span class="cs-dot paused"></span>${cs.label}</div>`;
-      else if(cs.type==='multi')csHtml=`<div class="cs-bar active-now" style="flex-direction:column;align-items:flex-start;gap:3px;">${cs.label.split(' · ').map(l=>`<div style="display:flex;align-items:center;gap:5px;"><span class="cs-dot active"></span>${l}</div>`).join('')}</div>`;
-      else csHtml=`<div class="cs-bar active-now"><span class="cs-dot active"></span>${cs.label}</div>`;
+  if(!dl)return;
+  const searchQ=(document.getElementById('doneSearch')?.value||'').trim().toUpperCase();
+
+  let filtered=doneList;
+  if(searchQ)filtered=filtered.filter(d=>d.so.toUpperCase().includes(searchQ)||d.item.toUpperCase().includes(searchQ)||shortGrp(d.group).toUpperCase().includes(searchQ));
+
+  if(!filtered.length){
+    dl.innerHTML='<div class="empty-done">'+(searchQ?'No results for "'+searchQ+'"':'Nothing completed yet<br>Chua co gi hoan thanh')+'</div>';
+    return;
+  }
+
+  // Group by dateKey
+  const today=new Date().toISOString().slice(0,10);
+  const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+
+  const groups={};
+  filtered.forEach(d=>{
+    const key=d.dateKey||'Unknown';
+    if(!groups[key])groups[key]=[];
+    groups[key].push(d);
+  });
+
+  const sortedKeys=Object.keys(groups).sort((a,b)=>b>a?1:-1);
+
+  dl.innerHTML=sortedKeys.map(key=>{
+    let dayLabel;
+    if(key===today)dayLabel='Today';
+    else if(key===yesterday)dayLabel='Yesterday / Hom qua';
+    else if(key){
+      const d=new Date(key+'T00:00:00');
+      dayLabel=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    } else {
+      dayLabel='Earlier';
     }
-    return `<div class="done-card ${d.fullyDone?'fully':''}">
-      <div class="done-top">
-        <div class="done-dot ${d.fullyDone?'dd-full':'dd-st'}"></div>
-        <div class="done-info">
-          <div class="done-so">${d.so}</div>
-          <div class="done-item">${d.item}</div>
-          <div class="done-meta">${shortGrp(d.group)} · ${d.doneAt}${d.sentQty?' · '+d.sentQty+' sent':''}</div>
-          ${d.note?`<div style="font-size:10px;color:var(--amber-dk);font-style:italic;margin-top:2px;">📝 ${d.note}</div>`:''}
+
+    const items=groups[key];
+    const cardsHtml=items.map(d=>{
+      const line=lines.find(l=>l.so===d.so&&l.item===d.item);
+      const cs=line?getCurrentStation(line.id):null;
+      let csHtml='';
+      if(cs){
+        if(cs.type==='complete')csHtml=`<div class="cs-bar complete-now"><span class="cs-dot complete"></span>${cs.label}</div>`;
+        else if(cs.type==='waiting')csHtml=`<div class="cs-bar waiting-now"><span class="cs-dot waiting"></span>${cs.label}</div>`;
+        else if(cs.type==='queue')csHtml=`<div class="cs-bar waiting-now"><span class="cs-dot waiting"></span>🕐 ${cs.label}</div>`;
+        else if(cs.type==='paused')csHtml=`<div class="cs-bar paused-now"><span class="cs-dot paused"></span>${cs.label}</div>`;
+        else if(cs.type==='multi')csHtml=`<div class="cs-bar active-now" style="flex-direction:column;align-items:flex-start;gap:3px;">${cs.label.split(' · ').map(l=>`<div style="display:flex;align-items:center;gap:5px;"><span class="cs-dot active"></span>${l}</div>`).join('')}</div>`;
+        else csHtml=`<div class="cs-bar active-now"><span class="cs-dot active"></span>${cs.label}</div>`;
+      }
+      return `<div class="done-card ${d.fullyDone?'fully':''}">
+        <div class="done-top">
+          <div class="done-dot ${d.fullyDone?'dd-full':'dd-st'}"></div>
+          <div class="done-info">
+            <div class="done-so">${d.so}</div>
+            <div class="done-item">${d.item}</div>
+            <div class="done-meta">${shortGrp(d.group)} · ${d.doneAt}${d.sentQty?' · '+d.sentQty+' sent':''}</div>
+            ${d.note?`<div style="font-size:10px;color:var(--amber-dk);font-style:italic;margin-top:2px;">📝 ${d.note}</div>`:''}
+          </div>
+          <div class="done-right">
+            <div class="done-qty-n">${d.qty.replace(' pcs','')}</div>
+            <div class="done-qty-l">pcs</div>
+            <div class="done-badge ${d.fullyDone?'db-full':'db-st'}">${d.fullyDone?'Complete':'Done'}</div>
+            <div class="done-dur">${formatMs(d.totalMs)}</div>
+          </div>
         </div>
-        <div class="done-right">
-          <div class="done-qty-n">${d.qty.replace(' pcs','')}</div>
-          <div class="done-qty-l">pcs</div>
-          <div class="done-badge ${d.fullyDone?'db-full':'db-st'}">${d.fullyDone?'Complete':'Done'}</div>
-          <div class="done-dur">${formatMs(d.totalMs)}</div>
-        </div>
-      </div>
-      ${csHtml}
-    </div>`;
+        ${csHtml}
+      </div>`;
+    }).join('');
+
+    return `<div style="padding:6px 14px 2px;background:var(--bg2);border-bottom:1px solid var(--bdr3);border-top:1px solid var(--bdr3);display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;">${dayLabel}</span>
+      <span style="font-size:11px;color:var(--txt3);">${items.length} item${items.length!==1?'s':''}</span>
+    </div>${cardsHtml}`;
   }).join('');
 }
 
