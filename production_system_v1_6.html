@@ -113,12 +113,11 @@ body{font-family:var(--font);background:var(--bg2);}
 .sb-remaining{font-size:11px;color:rgba(255,255,255,.7);font-variant-numeric:tabular-nums;white-space:nowrap;}
 
 /* BULK SO */
-.bulk-bar{background:var(--bg1);border-bottom:1px solid var(--bdr3);flex-shrink:0;display:none;max-height:55vh;display:none;flex-direction:column;}
-.bulk-bar.open{display:flex;}
-.bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;flex-shrink:0;}
+.bulk-bar{background:var(--bg1);border-bottom:1px solid var(--bdr3);flex-shrink:0;display:none;}
+.bulk-bar.open{display:block;}
+.bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
 .bulk-so-label{font-size:11px;font-weight:500;color:var(--txt2);}
 .bulk-so-val{font-size:15px;font-weight:700;color:var(--blue);}
-.bulk-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
 .bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;}
 .bulk-row{display:flex;align-items:center;gap:8px;}
 .bulk-item-wrap{flex:1;position:relative;}
@@ -256,6 +255,7 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-take{padding:10px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;}
 .btn-take .vn{font-size:9px;opacity:.8;}
 .btn-take:active{opacity:.85;}
+.btn-take-blocked{padding:8px 12px;background:var(--bg3);color:var(--txt3);border:1px solid var(--bdr3);border-radius:var(--r-md);font-size:11px;font-weight:500;cursor:default;display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;text-align:center;line-height:1.3;}
 
 /* DASHBOARD */
 .dash-inner{flex-direction:column;background:var(--bg3);width:100%;overflow:hidden;display:flex;flex:1;}
@@ -450,10 +450,8 @@ body{font-family:var(--font);background:var(--bg2);}
       <span class="bulk-so-val" id="bulkSODisplay">—</span>
       <span style="font-size:11px;color:var(--txt3);margin-left:4px;">· Add all items below then press START ALL</span>
     </div>
-    <div class="bulk-scroll" id="bulkScroll">
-      <div class="bulk-rows" id="bulkRows"></div>
-      <div class="bulk-add-btn" onclick="addBulkRow()">＋ Add Item Row <span style="font-size:10px;color:var(--txt3);">/ Them hang</span></div>
-    </div>
+    <div class="bulk-rows" id="bulkRows"></div>
+    <div class="bulk-add-btn" onclick="addBulkRow()">＋ Add Item Row <span style="font-size:10px;color:var(--txt3);">/ Them hang</span></div>
     <div class="bulk-footer">
       <button class="bulk-cancel-btn" onclick="closeBulkSO()">Cancel</button>
       <button class="bulk-start-btn" onclick="handleBulkStart()">✓ START ALL</button>
@@ -1466,6 +1464,9 @@ function renderQueue(){
   }
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
+    // Check if same line still has an active or paused station (different group)
+    const activeStation=jobs.find(j=>j.lineId===qi.lineId&&(j.state==='active'||j.state==='paused'));
+    const blockedBy=activeStation?shortGrp(activeStation.group):null;
     return `<div class="q-card">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
@@ -1480,9 +1481,10 @@ function renderQueue(){
         <div class="q-qty-n">${qi.qty}</div>
         <div class="q-qty-l">pcs</div>
       </div>
-      <button class="btn-take" onclick="openTakeModal('${qi.id}')">
-        <span>TAKE</span><span class="vn">Nhan</span>
-      </button>
+      ${blockedBy
+        ? `<div class="btn-take-blocked">⏳ In progress<br>at ${blockedBy}</div>`
+        : `<button class="btn-take" onclick="openTakeModal('${qi.id}')"><span>TAKE</span><span class="vn">Nhan</span></button>`
+      }
     </div>`;
   }).join('');
 }
@@ -1978,10 +1980,6 @@ function addBulkRow(){
     <input class="bulk-qty" type="number" id="bulkQty_${id}" placeholder="Qty" min="1"/>
     <button class="bulk-remove" onclick="removeBulkRow(${id})" title="Remove">×</button>`;
   document.getElementById('bulkRows').appendChild(row);
-  // Auto-scroll so new row and the "+ Add Item" button are visible
-  const scr=document.getElementById('bulkScroll');
-  if(scr) setTimeout(()=>scr.scrollTop=scr.scrollHeight,50);
-  document.getElementById('bulkItem_'+id).focus();
 }
 
 function removeBulkRow(id){
