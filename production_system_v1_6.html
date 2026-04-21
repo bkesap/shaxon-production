@@ -566,6 +566,13 @@ body{font-family:var(--font);background:var(--bg2);}
         <h2>🔒 Admin Panel — Shaxon Production</h2>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
+      <div style="padding:10px 16px 0;display:flex;gap:10px;align-items:center;flex-shrink:0;border-bottom:1px solid var(--bdr3);">
+        <div class="job-search-wrap" style="max-width:300px;">
+          <span class="job-search-ico">🔍</span>
+          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" spellcheck="false"/>
+        </div>
+        <span style="font-size:12px;color:var(--txt3);" id="adminStats"></span>
+      </div>
       <div class="admin-body" id="adminBody">Loading...</div>
     </div>
   </div>
@@ -777,9 +784,9 @@ function showPage(p,el){
 async function loadAll(){
   setSyncDot('syncing');
   try{
-    const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at');
+    const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at').limit(10000);
     if(le)throw le;
-    const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
+    const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at').limit(10000);
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
     rebuildJobs();rebuildDone();rebuildQueue();
@@ -1600,8 +1607,11 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
+  const searchQ=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
+  const filteredJobs=searchQ?jobs.filter(j=>j.so.includes(searchQ)||j.item.toUpperCase().includes(searchQ)):jobs;
+  const filteredQueue=searchQ?queueItems.filter(q=>q.so.includes(searchQ)||q.item.toUpperCase().includes(searchQ)):queueItems;
   // Active jobs section
-  const activeRows=jobs.map(j=>`<tr>
+  const activeRows=filteredJobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -1613,7 +1623,7 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=queueItems.map(qi=>`<tr>
+  const queueRows=filteredQueue.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
@@ -1626,14 +1636,17 @@ function renderAdmin(){
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
   </tr>`).join('');
 
+  // Update stats
+  const statsEl=document.getElementById('adminStats');
+  if(statsEl)statsEl.textContent=`${jobs.length} active · ${queueItems.length} queue · ${lines.filter(l=>l.fully_done).length} complete`;
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
-      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      <div class="admin-section-hdr">Active Jobs (${filteredJobs.length})</div>
+      ${filteredJobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
-      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      <div class="admin-section-hdr">Queue (${filteredQueue.length})</div>
+      ${filteredQueue.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
