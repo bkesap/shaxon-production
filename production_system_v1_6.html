@@ -499,6 +499,10 @@ body{font-family:var(--font);background:var(--bg2);}
       <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
+        <div class="job-search-wrap">
+          <span class="job-search-ico">🔍</span>
+          <input class="job-search" type="text" id="doneSearch" placeholder="Search SO or item..." oninput="renderDonePanel()" autocomplete="off" autocorrect="off" spellcheck="false"/>
+        </div>
       </div>
     </div>
     <div class="done-scroll" id="doneList" style="flex:1;overflow-y:auto;">
@@ -1000,24 +1004,6 @@ async function confirmStart(){
       if(error)throw error;
       lineId=data.id;
     }
-    // ── DUPLICATE GUARD: fresh DB check before insert ─────────────────────
-    // Local cache may be stale if another tablet just started the same job.
-    const {data:existingSt,error:chkErr}=await sb.from('stations')
-      .select('id,grp,state')
-      .eq('line_id',lineId)
-      .in('state',['active','paused'])
-      .eq('grp',team)
-      .maybeSingle();
-    if(chkErr){console.warn('Dup check error',chkErr);}
-    if(existingSt){
-      await loadAll();
-      showWarn('amber','Already Active — Duplicate Blocked','Zaten Aktif — Tekrar Engellendi',
-        `<strong>${item}</strong> was just started at <strong>${team}</strong> by another device. Duplicate blocked.`,
-        `Bu urun baska bir cihazdan zaten baslatildi. Tekrar engellendi.`,
-        `<div class="modal-detail-row">Sales Order: <strong>${so}</strong></div><div class="modal-detail-row">Item: <strong>${item}</strong></div><div class="modal-detail-row">Station: <strong>${team}</strong></div>`);
-      setSyncDot('ok');return;
-    }
-    // ── END DUPLICATE GUARD ───────────────────────────────────────────────
     const {error:se}=await sb.from('stations').insert({
       line_id:lineId,grp:team,state:'active',
       started_at:new Date().toISOString(),elapsed_ms:0,
@@ -1435,8 +1421,11 @@ function renderWorker(){
 
 function renderDonePanel(){
   const dl=document.getElementById('doneList');
-  if(!doneList.length){dl.innerHTML='<div class="empty-done">Nothing completed yet<br>Press DONE to see it here</div>';return;}
-  dl.innerHTML=doneList.map(d=>{
+  const searchQ=(document.getElementById('doneSearch')?.value||'').trim().toUpperCase();
+  let filteredDone=doneList;
+  if(searchQ)filteredDone=filteredDone.filter(d=>d.so.includes(searchQ)||d.item.toUpperCase().includes(searchQ));
+  if(!filteredDone.length){dl.innerHTML='<div class="empty-done">'+(searchQ?'No results / Khong co ket qua':'Nothing completed yet<br>Press DONE to see it here')+'</div>';return;}
+  dl.innerHTML=filteredDone.map(d=>{
     const line=lines.find(l=>l.so===d.so&&l.item===d.item);
     const cs=line?getCurrentStation(line.id):null;
     let csHtml='';
@@ -2079,11 +2068,6 @@ async function handleBulkStart(){
         if(error)throw error;
         lineId=data.id;
       }
-      // ── DUPLICATE GUARD (bulk) ────────────────────────────────────────────
-      const {data:dupSt}=await sb.from('stations')
-        .select('id').eq('line_id',lineId).in('state',['active','paused']).eq('grp',team).maybeSingle();
-      if(dupSt){showToast(item+' already active — skipped / Zaten aktif, atlandi','amber');continue;}
-      // ── END GUARD ─────────────────────────────────────────────────────────
       const {error:se}=await sb.from('stations').insert({
         line_id:lineId,grp:team,state:'active',
         started_at:new Date().toISOString(),elapsed_ms:0,
