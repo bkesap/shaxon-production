@@ -564,6 +564,10 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
+        <div class="job-search-wrap">
+          <span class="job-search-ico">🔍</span>
+          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()"/>
+        </div>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -1662,8 +1666,10 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
+  const adminQ=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
+  const filterFn=x=>!adminQ||(x.so&&x.so.toUpperCase().includes(adminQ))||(x.item&&x.item.toUpperCase().includes(adminQ));
   // Active jobs section
-  const activeRows=jobs.map(j=>`<tr>
+  const activeRows=jobs.filter(filterFn).map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -1675,14 +1681,14 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=queueItems.map(qi=>`<tr>
+  const queueRows=queueItems.filter(filterFn).map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
+  const completedRows=lines.filter(l=>l.fully_done&&filterFn(l)).map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
