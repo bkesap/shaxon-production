@@ -378,6 +378,9 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-ok:active{opacity:.85;}
 .info-box{font-size:12px;color:var(--txt2);background:var(--blue-lt);padding:9px 11px;border-radius:var(--r-md);line-height:1.7;}
 
+.take-team-btn{padding:14px 8px;background:var(--bg2);border:1.5px solid var(--bdr2);border-radius:var(--r-md);font-size:15px;font-weight:600;cursor:pointer;color:var(--txt1);transition:all .15s;font-family:var(--font);}
+.take-team-btn:hover{background:var(--blue-lt);border-color:var(--blue-m);color:var(--blue);}
+.take-team-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff;}
 .toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--blue-dk);color:#fff;padding:8px 20px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:400;white-space:nowrap;}
 .toast.show{opacity:1;}
 .toast.green{background:#1b5e20;}
@@ -653,21 +656,26 @@ body{font-family:var(--font);background:var(--bg2);}
 </div>
 
 <div class="modal-overlay" id="takeModal">
-  <div class="modal-box">
+  <div class="modal-box" style="width:420px;">
     <div class="modal-hdr blue"><div class="modal-title">Which team is taking this? / Nhom nao nhan?</div><div class="modal-sub" id="takeCtx"></div></div>
     <div class="modal-body">
-      <select class="team-sel" id="takeTeamSel">
-        <option value="">-- Select your team --</option>
-        <option>Cutting</option>
-        <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
-        <option>Part Pull</option>
-        <option>Testing / Packing</option>
-      </select>
-      <div style="font-size:12px;color:var(--txt3);">This will move the job to your active list / Se chuyen viec vao danh sach cua ban</div>
+      <div style="font-size:12px;font-weight:500;color:var(--txt2);margin-bottom:10px;">Select your team / Chon nhom cua ban:</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;" id="takeTeamBtns">
+        <button class="take-team-btn" onclick="selectTakeTeam('C1')">C1</button>
+        <button class="take-team-btn" onclick="selectTakeTeam('C2')">C2</button>
+        <button class="take-team-btn" onclick="selectTakeTeam('C3')">C3</button>
+        <button class="take-team-btn" onclick="selectTakeTeam('C4')">C4</button>
+        <button class="take-team-btn" style="grid-column:span 2;" onclick="selectTakeTeam('Testing / Packing')">Testing / Packing</button>
+      </div>
+      <input type="hidden" id="takeTeamSel" value=""/>
+      <div id="takeConfirmBox" style="display:none;background:var(--blue-lt);border-radius:var(--r-md);padding:12px 14px;font-size:14px;color:var(--blue-dk);line-height:1.7;">
+        <div id="takeConfirmMsg"></div>
+        <div style="font-size:12px;font-style:italic;color:var(--txt3);margin-top:4px;" id="takeConfirmMsgVN"></div>
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel</button>
-      <button class="btn-ok" onclick="confirmTake()">Take Job / Nhan viec</button>
+      <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel / Huy</button>
+      <button class="btn-ok" id="takeFinalBtn" style="display:none;" onclick="confirmTake()">✓ Confirm Take / Xac nhan nhan</button>
     </div>
   </div>
 </div>
@@ -859,7 +867,8 @@ function rebuildDone(){
         so:line.so,item:line.item,qty:line.qty,
         group:st.grp,totalMs:st.elapsed_ms||0,
         doneAt:st.done_at||'',fullyDone:line.fully_done,
-        note:st.note||'',sentQty:st.sent_qty||0
+        note:st.note||'',sentQty:st.sent_qty||0,
+        lineFullyDone:line.fully_done
       });
     });
   });
@@ -1270,11 +1279,27 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
 }
 
 // ── QUEUE — take ──────────────────────────────────────────────────────────────
+function selectTakeTeam(team){
+  document.getElementById('takeTeamSel').value=team;
+  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
+  event.target.classList.add('selected');
+  const qi=queueItems.find(x=>x.id===takeTargetId);
+  const item=qi?qi.item:'';
+  const so=qi?qi.so:'';
+  document.getElementById('takeConfirmBox').style.display='block';
+  document.getElementById('takeConfirmMsg').textContent='Confirm: '+team+' is taking '+so+' / '+item+'?';
+  document.getElementById('takeConfirmMsgVN').textContent='Xac nhan: Nhom '+team+' se nhan '+so+' / '+item+'?';
+  document.getElementById('takeFinalBtn').style.display='block';
+}
+
 function openTakeModal(qid){
   const qi=queueItems.find(x=>x.id===qid);if(!qi)return;
   takeTargetId=qid;
   document.getElementById('takeCtx').textContent=qi.so+' / '+qi.item+' · '+qi.qty+' pcs from '+shortGrp(qi.fromGroup);
   document.getElementById('takeTeamSel').value='';
+  document.getElementById('takeConfirmBox').style.display='none';
+  document.getElementById('takeFinalBtn').style.display='none';
+  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
   document.getElementById('takeModal').classList.add('open');
 }
 async function confirmTake(){
