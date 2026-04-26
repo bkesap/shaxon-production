@@ -675,7 +675,8 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel / Huy</button>
-      <button class="btn-ok" id="takeFinalBtn" style="display:none;" onclick="confirmTake()">✓ Confirm Take / Xac nhan nhan</button>
+      <button class="btn-cancel" id="takeCancelTeamBtn" style="display:none;" onclick="resetTakeModal()">← Back / Quay lai</button>
+      <button class="btn-ok" id="takeFinalBtn" style="display:none;" onclick="confirmTake()">✓ Confirm / Xac nhan</button>
     </div>
   </div>
 </div>
@@ -821,6 +822,8 @@ async function loadAll(){
     renderWorker();renderQueue();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
     if(document.getElementById('page-admin').classList.contains('active'))renderAdmin();
+    if(document.getElementById('page-completed').classList.contains('active'))renderDonePanel();
+    if(document.getElementById('page-daily').classList.contains('active'))renderDaily();
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Connection error / Loi ket noi','red');
@@ -1284,22 +1287,40 @@ function selectTakeTeam(team){
   document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
   event.target.classList.add('selected');
   const qi=queueItems.find(x=>x.id===takeTargetId);
-  const item=qi?qi.item:'';
   const so=qi?qi.so:'';
+  const item=qi?qi.item:'';
+  const qty=qi?qi.qty:'';
+  // Hide team buttons, show big confirm
+  document.getElementById('takeTeamBtns').style.display='none';
   document.getElementById('takeConfirmBox').style.display='block';
-  document.getElementById('takeConfirmMsg').textContent='Confirm: '+team+' is taking '+so+' / '+item+'?';
-  document.getElementById('takeConfirmMsgVN').textContent='Xac nhan: Nhom '+team+' se nhan '+so+' / '+item+'?';
+  document.getElementById('takeConfirmBox').innerHTML=`
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:8px;">You are taking / Ban dang nhan:</div>
+      <div style="font-size:22px;font-weight:700;color:var(--blue);margin-bottom:4px;">${so}</div>
+      <div style="font-size:15px;color:var(--txt1);margin-bottom:4px;">${item}</div>
+      <div style="font-size:13px;color:var(--txt3);margin-bottom:16px;">${qty} pcs</div>
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:6px;">Assigned to / Phan cong cho:</div>
+      <div style="font-size:28px;font-weight:800;color:#fff;background:var(--blue);padding:12px 24px;border-radius:var(--r-lg);display:inline-block;letter-spacing:1px;">${team}</div>
+      <div style="font-size:13px;color:var(--txt3);margin-top:14px;font-style:italic;">Confirm to proceed / Xac nhan de tiep tuc</div>
+    </div>`;
   document.getElementById('takeFinalBtn').style.display='block';
+  document.getElementById('takeCancelTeamBtn').style.display='inline-block';
+}
+
+function resetTakeModal(){
+  document.getElementById('takeTeamSel').value='';
+  document.getElementById('takeTeamBtns').style.display='grid';
+  document.getElementById('takeConfirmBox').style.display='none';
+  document.getElementById('takeFinalBtn').style.display='none';
+  document.getElementById('takeCancelTeamBtn').style.display='none';
+  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
 }
 
 function openTakeModal(qid){
   const qi=queueItems.find(x=>x.id===qid);if(!qi)return;
   takeTargetId=qid;
   document.getElementById('takeCtx').textContent=qi.so+' / '+qi.item+' · '+qi.qty+' pcs from '+shortGrp(qi.fromGroup);
-  document.getElementById('takeTeamSel').value='';
-  document.getElementById('takeConfirmBox').style.display='none';
-  document.getElementById('takeFinalBtn').style.display='none';
-  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
+  resetTakeModal();
   document.getElementById('takeModal').classList.add('open');
 }
 async function confirmTake(){
