@@ -118,7 +118,7 @@ body{font-family:var(--font);background:var(--bg2);}
 .bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
 .bulk-so-label{font-size:11px;font-weight:500;color:var(--txt2);}
 .bulk-so-val{font-size:15px;font-weight:700;color:var(--blue);}
-.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;}
+.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
 .bulk-row{display:flex;align-items:center;gap:8px;}
 .bulk-item-wrap{flex:1;position:relative;}
 .bulk-item{width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);}
@@ -495,13 +495,13 @@ body{font-family:var(--font);background:var(--bg2);}
 <div class="page" id="page-completed">
   <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <div class="panel-hdr" style="padding:10px 16px;">
-      <span class="panel-lbl">Completed Today (<span id="statDone">0</span>)</span>
+      <span class="panel-lbl">Completed (<span id="statDone">0</span>)</span>
       <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="doneSearch" placeholder="Search SO or item..." oninput="renderDonePanel()" autocomplete="off" autocorrect="off" spellcheck="false"/>
+          <input class="job-search" type="text" id="completedSearch" placeholder="Search SO or item..." oninput="renderDonePanel()"/>
         </div>
       </div>
     </div>
@@ -565,13 +565,6 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
-      </div>
-      <div style="padding:10px 16px 0;display:flex;gap:10px;align-items:center;flex-shrink:0;border-bottom:1px solid var(--bdr3);">
-        <div class="job-search-wrap" style="max-width:300px;">
-          <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" spellcheck="false"/>
-        </div>
-        <span style="font-size:12px;color:var(--txt3);" id="adminStats"></span>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
     </div>
@@ -769,11 +762,16 @@ function setSyncDot(s){
 }
 const shortGrp=g=>g==='Testing / Packing'?'Test/Pack':g;
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+function clearAllSearches(){
+  const ids=['jobSearch','queueSearch','dashSearch'];
+  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+}
 function showPage(p,el){
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
+  clearAllSearches();
   if(p==='dash')renderDash();
   if(p==='queue')renderQueue();
   if(p==='admin')renderAdmin();
@@ -784,9 +782,9 @@ function showPage(p,el){
 async function loadAll(){
   setSyncDot('syncing');
   try{
-    const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at').limit(10000);
+    const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at');
     if(le)throw le;
-    const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at').limit(10000);
+    const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
     rebuildJobs();rebuildDone();rebuildQueue();
@@ -844,7 +842,7 @@ function rebuildDone(){
       });
     });
   });
-  doneList.sort((a,b)=>b.doneAt>a.doneAt?1:-1);
+  doneList.sort((a,b)=>b.doneAt<a.doneAt?1:-1);
 }
 
 function rebuildQueue(){
@@ -878,6 +876,7 @@ function onTeamChange(){
   const isAll=currentTeam==='__ALL__';
   document.getElementById('teamDisplay').textContent=isAll?'All Teams — View Only':currentTeam||'-- Select Team --';
   document.getElementById('readonlyBanner').className='readonly-banner'+(isAll?' on':'');
+  const js=document.getElementById('jobSearch');if(js)js.value='';
   renderWorker();
 }
 
@@ -971,6 +970,14 @@ function handleStart(){
   if(!item){showToast('Enter Item No');return;}
   if(!qty){showToast('Enter quantity / Nhap so luong');return;}
   const existingLine=lines.find(l=>l.so===so&&l.item===item);
+  // Only Cutting can release new items. Other teams must take from queue.
+  if(!existingLine&&team!=='Cutting'){
+    showWarn('red','Cannot Start Here','Release from Cutting only',
+      `New items can only be released by <strong>Cutting</strong>. Other teams must take items from the Queue.`,
+      `Chi Cutting moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
+      `<div class="modal-detail-row">Selected team: <strong>${team}</strong></div>`);
+    return;
+  }
   if(existingLine){
     const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
     if(activeHere){showWarn('amber','Already Active Here','Da bat dau roi',`<strong>${item}</strong> is already active at <strong>${team}</strong>.`,`San pham nay dang duoc lam tai nhom nay.`,'');return;}
@@ -1029,7 +1036,6 @@ async function confirmStart(){
 
     // If Cutting → ask about Part Pull
     if(team==='Cutting'){
-      // Check Part Pull not already active/done for this item
       const currentLine=lines.find(l=>l.so===so&&l.item===item);
       const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
       const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
@@ -1166,6 +1172,8 @@ async function confirmTestComplete(){
 async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
   const add=j.state==='active'?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
+  const GATE_GROUPS=['Cutting','Part Pull'];
+  const C_TEAMS=['C1','C2','C3','C4'];
   setSyncDot('syncing');
   try{
     // Mark station as done
@@ -1175,11 +1183,38 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
     }).eq('id',sid);
 
     if(markComplete){
-      // Mark line fully done
       await sb.from('lines').update({fully_done:true}).eq('id',j.lineId);
       showToast('ORDER COMPLETE: '+j.so+' / '+j.item,'green');
+    } else if(GATE_GROUPS.includes(j.group)){
+      // Cutting or Part Pull done — re-fetch fresh state from Supabase
+      const {data:freshStations}=await sb.from('stations').select('*').eq('line_id',j.lineId);
+      const cuttingDone=freshStations&&freshStations.some(s=>s.grp==='Cutting'&&s.state==='done');
+      const partPullExists=freshStations&&freshStations.some(s=>s.grp==='Part Pull');
+      const partPullDone=freshStations&&freshStations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+      const bothDone=cuttingDone&&(!partPullExists||partPullDone);
+      // Always delete existing queue entries for this line to avoid duplicates
+      const existingQueues=freshStations.filter(s=>s.state==='queue');
+      for(const eq of existingQueues){
+        await sb.from('stations').delete().eq('id',eq.id);
+      }
+      // Always create a queue entry — locked state is handled in renderQueue
+      await sb.from('stations').insert({
+        line_id:j.lineId,grp:'Cutting',
+        state:'queue',started_at:new Date().toISOString(),
+        elapsed_ms:0,done_at:nowStr(),
+        note:null,sent_qty:sentQty,remaining_qty:0,
+        received_qty:sentQty,
+        from_grp:bothDone?(partPullExists?'Cutting+Part Pull':'Cutting'):j.group,
+        is_partial:sentQty<(parseInt(j.totalQty)||0)
+      });
+      if(bothDone){
+        showToast('✅ Cutting + Part Pull complete — Queue unlocked','green');
+      } else {
+        const missing=cuttingDone?'Part Pull':'Cutting';
+        showToast(shortGrp(j.group)+' done ✓ — Waiting for '+missing);
+      }
     } else {
-      // Create queue entry — stores exact sent qty
+      // Normal flow (C1-C4, Testing/Packing) → queue as before
       await sb.from('stations').insert({
         line_id:j.lineId,grp:j.group,
         state:'queue',started_at:new Date().toISOString(),
@@ -1188,15 +1223,8 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
         received_qty:sentQty,from_grp:j.group,
         is_partial:sentQty<(parseInt(j.totalQty)||0)
       });
-
-      // If remaining > 0, update the current job's remaining OR create waiting
       if(remaining>0){
-        // Check if this was a waiting job (partial send from waiting)
         if(j.state==='waiting'){
-          // Update the waiting station with new remaining
-          await sb.from('stations').update({remaining_qty:remaining,sent_qty:sentQty}).eq('id',sid);
-          // Re-mark as waiting (we marked done above, need to undo that and keep it active)
-          // Actually: mark done, create new waiting with remaining
           await sb.from('stations').insert({
             line_id:j.lineId,grp:j.group,
             state:'waiting',started_at:new Date().toISOString(),
@@ -1205,7 +1233,6 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
             received_qty:availableQty,is_partial:true
           });
         } else {
-          // Regular active job with partial send — create waiting
           await sb.from('stations').insert({
             line_id:j.lineId,grp:j.group,
             state:'waiting',started_at:new Date().toISOString(),
@@ -1233,6 +1260,16 @@ async function confirmTake(){
   const team=document.getElementById('takeTeamSel').value;
   if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
+  // Flow validation: C1-C4 can only take if both Cutting AND Part Pull are done
+  const C_TEAMS=['C1','C2','C3','C4'];
+  if(C_TEAMS.includes(team)){
+    const line=lines.find(l=>l.id===qi.lineId);
+    const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
+    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
+    const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+    if(partPullExists&&!cuttingDone){showToast('🔒 Cutting not done yet / Cutting henuz bitmedi','red');return;}
+    if(partPullExists&&!partPullDone){showToast('🔒 Part Pull not done yet / Part Pull henuz bitmedi','red');return;}
+  }
   closeModal('takeModal');
   setSyncDot('syncing');
   try{
@@ -1428,11 +1465,12 @@ function renderWorker(){
 
 function renderDonePanel(){
   const dl=document.getElementById('doneList');
-  const searchQ=(document.getElementById('doneSearch')?.value||'').trim().toUpperCase();
-  let filteredDone=doneList;
-  if(searchQ)filteredDone=filteredDone.filter(d=>d.so.includes(searchQ)||d.item.toUpperCase().includes(searchQ));
-  if(!filteredDone.length){dl.innerHTML='<div class="empty-done">'+(searchQ?'No results / Khong co ket qua':'Nothing completed yet<br>Press DONE to see it here')+'</div>';return;}
-  dl.innerHTML=filteredDone.map(d=>{
+  const searchC=(document.getElementById('completedSearch')?.value||'').trim().toUpperCase();
+  // Sort newest first
+  const sorted=[...doneList].sort((a,b)=>b.doneAt>a.doneAt?1:-1);
+  const filtered=searchC?sorted.filter(d=>d.so.includes(searchC)||d.item.toUpperCase().includes(searchC)):sorted;
+  if(!filtered.length){dl.innerHTML='<div class="empty-done">'+(searchC?'No results for "'+searchC+'"':'Nothing completed yet<br>Press DONE to see it here')+'</div>';return;}
+  dl.innerHTML=filtered.map(d=>{
     const line=lines.find(l=>l.so===d.so&&l.item===d.item);
     const cs=line?getCurrentStation(line.id):null;
     let csHtml='';
@@ -1477,7 +1515,15 @@ function renderQueue(){
   }
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
-    return `<div class="q-card">
+    // Lock check: locked only if Part Pull exists but either Cutting or Part Pull not done yet
+    const line=lines.find(l=>l.id===qi.lineId);
+    const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
+    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
+    const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+    // Only lock if Part Pull was opened but not yet done, OR cutting not done yet
+    const isLocked=partPullExists&&(!cuttingDone||!partPullDone);
+    const lockReason=isLocked?(cuttingDone?'Waiting: Part Pull not done yet':'Waiting: Cutting not done yet'):'';
+    return `<div class="q-card" style="${isLocked?'opacity:0.7;':''}">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
@@ -1486,14 +1532,16 @@ function renderQueue(){
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
           · ${qi.queuedAt}
         </div>
+        ${isLocked?`<div style="margin-top:5px;font-size:11px;font-weight:600;color:var(--amber-dk);background:var(--amber-lt);padding:3px 9px;border-radius:8px;display:inline-block;">🔒 ${lockReason}</div>`:''}
       </div>
       <div class="q-qty-col">
         <div class="q-qty-n">${qi.qty}</div>
         <div class="q-qty-l">pcs</div>
       </div>
-      <button class="btn-take" onclick="openTakeModal('${qi.id}')">
-        <span>TAKE</span><span class="vn">Nhan</span>
-      </button>
+      ${isLocked
+        ?`<button class="btn-take" style="background:#9099AA;cursor:not-allowed;" disabled title="${lockReason}"><span>LOCKED</span><span class="vn">Waiting</span></button>`
+        :`<button class="btn-take" onclick="openTakeModal('${qi.id}')"><span>TAKE</span><span class="vn">Nhan</span></button>`
+      }
     </div>`;
   }).join('');
 }
@@ -1508,7 +1556,14 @@ function renderDash(){
     if(!soMap[l.so])soMap[l.so]=[];
     soMap[l.so].push(l);
   });
-  const soKeys=Object.keys(soMap);
+  // Sort SO keys by most recent station activity (newest first)
+  const soKeys=Object.keys(soMap).sort((a,b)=>{
+    const getLatest=so=>Math.max(...(soMap[so]||[]).flatMap(l=>l.stations.map(s=>{
+      const t=s.started_at||s.done_at||'';
+      return t?new Date(t).getTime():0;
+    })).concat([0]));
+    return getLatest(b)-getLatest(a);
+  });
   document.getElementById('ds-so').textContent=soKeys.length;
   document.getElementById('ds-lines').textContent=lines.length;
   document.getElementById('ds-active').textContent=lines.filter(l=>getLineStatus(l)==='In Progress').length;
@@ -1607,11 +1662,8 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
-  const searchQ=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
-  const filteredJobs=searchQ?jobs.filter(j=>j.so.includes(searchQ)||j.item.toUpperCase().includes(searchQ)):jobs;
-  const filteredQueue=searchQ?queueItems.filter(q=>q.so.includes(searchQ)||q.item.toUpperCase().includes(searchQ)):queueItems;
   // Active jobs section
-  const activeRows=filteredJobs.map(j=>`<tr>
+  const activeRows=jobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -1623,7 +1675,7 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=filteredQueue.map(qi=>`<tr>
+  const queueRows=queueItems.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
@@ -1636,17 +1688,14 @@ function renderAdmin(){
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
   </tr>`).join('');
 
-  // Update stats
-  const statsEl=document.getElementById('adminStats');
-  if(statsEl)statsEl.textContent=`${jobs.length} active · ${queueItems.length} queue · ${lines.filter(l=>l.fully_done).length} complete`;
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${filteredJobs.length})</div>
-      ${filteredJobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
+      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${filteredQueue.length})</div>
-      ${filteredQueue.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
+      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
@@ -1671,6 +1720,21 @@ function renderAdmin(){
           ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
           🔁 For overtime, just extend the end time here.
         </div>
+      </div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-hdr">🔄 SAP Sales Order Sync</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+          Paste open SO numbers from SAP below (one per line). The system will find all <strong>S0XXXXX</strong> orders not in this list and delete them.
+          Orders not starting with <strong>S0</strong> will not be touched.
+        </div>
+        <textarea id="soSyncInput" rows="8" style="width:100%;padding:10px 12px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--mono);color:var(--txt1);background:var(--bg1);outline:none;resize:vertical;" placeholder="0732584&#10;0808648&#10;0808811&#10;..."></textarea>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button onclick="soSyncPreview()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Preview Changes</button>
+          <span style="font-size:12px;color:var(--txt3);">Review before deleting</span>
+        </div>
+        <div id="soSyncResult" style="display:none;"></div>
       </div>
     </div>
     <div class="admin-section">
@@ -1729,6 +1793,59 @@ async function confirmAdminDelete(){
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
+// ── SO SYNC ──────────────────────────────────────────────────────────────────
+function soSyncPreview(){
+  const raw=document.getElementById('soSyncInput').value;
+  if(!raw.trim()){showToast('Paste SO list first','red');return;}
+  // Parse pasted lines → build set of valid S0XXXXX keys
+  const sapNums=raw.split(/[
+,;	]+/).map(s=>s.trim()).filter(Boolean);
+  const validSOs=new Set(sapNums.map(n=>'S0'+n.replace(/^S0/i,'')));
+  // Find lines in system that start with S0 but are NOT in SAP list
+  const toDelete=lines.filter(l=>l.so.startsWith('S0')&&!validSOs.has(l.so));
+  const result=document.getElementById('soSyncResult');
+  if(!toDelete.length){
+    result.style.display='block';
+    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ All S0 orders in system match SAP list. Nothing to delete.</div>`;
+    return;
+  }
+  const rows=toDelete.map(l=>`<tr>
+    <td style="font-weight:600;color:var(--red);">${l.so}</td>
+    <td>${l.item}</td>
+    <td>${l.qty}</td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${l.fully_done?'var(--green-lt)':'var(--amber-lt)'};color:${l.fully_done?'#1b5e20':'var(--amber-dk)'};">${l.fully_done?'Complete':'Active'}</span></td>
+  </tr>`).join('');
+  result.style.display='block';
+  result.innerHTML=`
+    <div style="background:var(--red-lt);border:1px solid #FFCDD2;border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--red-dk);">
+      ⚠️ <strong>${toDelete.length} line(s)</strong> from <strong>${[...new Set(toDelete.map(l=>l.so))].length} SO(s)</strong> will be deleted — not found in SAP list.
+    </div>
+    <table class="admin-table" style="margin-bottom:12px;">
+      <thead><tr><th>Sales Order</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <button onclick="soSyncDelete(${JSON.stringify([...new Set(toDelete.map(l=>l.so))].map(s=>s))})" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete These Orders</button>`;
+}
+
+async function soSyncDelete(soList){
+  if(!confirm('Delete '+soList.length+' sales order(s) from system? This cannot be undone.'))return;
+  setSyncDot('syncing');
+  try{
+    for(const so of soList){
+      const soLines=lines.filter(l=>l.so===so);
+      for(const line of soLines){
+        await sb.from('stations').delete().eq('line_id',line.id);
+        await sb.from('lines').delete().eq('id',line.id);
+      }
+    }
+    await loadAll();
+    document.getElementById('soSyncResult').style.display='none';
+    document.getElementById('soSyncInput').value='';
+    showToast('✅ Deleted '+soList.length+' SO(s) from system','green');
+    renderAdmin();
+  }catch(err){console.error(err);setSyncDot('error');showToast('Error during sync','red');}
+}
+
 async function adminDeleteAll(){
   if(!confirm('Delete ALL data? This cannot be undone!'))return;
   setSyncDot('syncing');
