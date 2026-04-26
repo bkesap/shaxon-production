@@ -1900,6 +1900,16 @@ function renderAdmin(){
       </div>
     </div>
     <div class="admin-section">
+      <div class="admin-section-hdr">🔧 Fix Legacy Queue (Merge Cutting + Part Pull)</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+          Finds queue items where both Cutting and Part Pull are done but appear as separate entries. Merges them into one unlocked entry.
+        </div>
+        <button onclick="fixLegacyQueue()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue-lt);color:var(--blue-dk);border:1px solid var(--blue-m);border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔧 Fix Legacy Queue Entries</button>
+        <div id="fixLegacyResult" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="admin-section">
       <div class="admin-section-hdr">🧹 Clean Old Completed Orders</div>
       <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
         <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
@@ -2006,6 +2016,54 @@ async function soSyncExecute(){
     showToast('✅ Deleted '+soList.length+' SO(s) from system','green');
     renderAdmin();
   }catch(err){console.error(err);setSyncDot('error');showToast('Error during sync','red');}
+}
+
+async function fixLegacyQueue(){
+  const result=document.getElementById('fixLegacyResult');
+  setSyncDot('syncing');
+  let fixed=0;
+  try{
+    // Find all lines that have BOTH Cutting and Part Pull done
+    // AND have separate queue entries for each
+    for(const line of lines){
+      const stations=line.stations;
+      const cuttingDone=stations.some(s=>s.grp==='Cutting'&&s.state==='done');
+      const partPullDone=stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+      const queueStations=stations.filter(s=>s.state==='queue');
+      // If both done and multiple queue entries exist → consolidate
+      if(cuttingDone&&partPullDone&&queueStations.length>1){
+        // Delete all existing queue entries for this line
+        for(const qs of queueStations){
+          await sb.from('stations').delete().eq('id',qs.id);
+        }
+        // Create one consolidated unlocked entry
+        const qty=queueStations[0].received_qty||queueStations[0].sent_qty||parseInt(line.qty)||0;
+        await sb.from('stations').insert({
+          line_id:line.id,grp:'Cutting',
+          state:'queue',started_at:new Date().toISOString(),
+          elapsed_ms:0,done_at:new Date().toISOString(),
+          note:null,sent_qty:qty,remaining_qty:0,
+          received_qty:qty,from_grp:'Cutting+Part Pull',
+          is_partial:false
+        });
+        fixed++;
+      } else if(cuttingDone&&partPullDone&&queueStations.length===1){
+        // Already one entry but from_grp might be wrong — update it
+        const qs=queueStations[0];
+        if(qs.from_grp!=='Cutting+Part Pull'){
+          await sb.from('stations').update({from_grp:'Cutting+Part Pull'}).eq('id',qs.id);
+          fixed++;
+        }
+      }
+    }
+    await loadAll();
+    result.style.display='block';
+    result.innerHTML=`<div style="color:var(--green);font-size:13px;">✅ Fixed ${fixed} queue entry/entries.</div>`;
+    showToast('✅ Fixed '+fixed+' legacy queue entries','green');
+  }catch(err){
+    console.error(err);setSyncDot('error');
+    showToast('Error fixing queue','red');
+  }
 }
 
 function getBusinessDaysAgo(days){
