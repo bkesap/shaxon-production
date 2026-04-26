@@ -1824,10 +1824,12 @@ function soSyncPreview(){
       <thead><tr><th>Sales Order</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <button onclick="soSyncDelete(${JSON.stringify([...new Set(toDelete.map(l=>l.so))].map(s=>s))})" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete These Orders</button>`;
+    <button onclick="soSyncExecute()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete These Orders</button>`;
+  window._soSyncPending=[...new Set(toDelete.map(l=>l.so))];
 }
 
-async function soSyncDelete(soList){
+async function soSyncExecute(){
+  const soList=window._soSyncPending||[];
   if(!confirm('Delete '+soList.length+' sales order(s) from system? This cannot be undone.'))return;
   setSyncDot('syncing');
   try{
