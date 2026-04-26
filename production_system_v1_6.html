@@ -1801,7 +1801,7 @@ function soSyncPreview(){
   const sapNums=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
   const validSOs=new Set(sapNums.map(n=>'S0'+n.replace(/^S0/i,'')));
   // Find lines in system that start with S0 but are NOT in SAP list
-  const toDelete=lines.filter(l=>l.so.startsWith('S0')&&!validSOs.has(l.so));
+  const toDelete=lines.filter(l=>l.so.startsWith('S0')&&!validSOs.has(l.so)&&!l.fully_done);
   const result=document.getElementById('soSyncResult');
   if(!toDelete.length){
     result.style.display='block';
