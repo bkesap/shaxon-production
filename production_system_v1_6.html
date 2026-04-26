@@ -865,14 +865,16 @@ function rebuildJobs(){
 function rebuildDone(){
   doneList=[];
   lines.forEach(line=>{
-    line.stations.filter(s=>s.state==='done').forEach(st=>{
-      doneList.push({
-        so:line.so,item:line.item,qty:line.qty,
-        group:st.grp,totalMs:st.elapsed_ms||0,
-        doneAt:st.done_at||'',fullyDone:line.fully_done,
-        note:st.note||'',sentQty:st.sent_qty||0,
-        lineFullyDone:line.fully_done
-      });
+    const doneStations=line.stations.filter(s=>s.state==='done');
+    if(!doneStations.length)return;
+    // Only keep the latest done station per item
+    const latest=doneStations.reduce((a,b)=>(a.done_at||'')>(b.done_at||'')?a:b);
+    doneList.push({
+      so:line.so,item:line.item,qty:line.qty,
+      group:latest.grp,totalMs:latest.elapsed_ms||0,
+      doneAt:latest.done_at||'',fullyDone:line.fully_done,
+      note:latest.note||'',sentQty:latest.sent_qty||0,
+      lineFullyDone:line.fully_done
     });
   });
   doneList.sort((a,b)=>b.doneAt<a.doneAt?1:-1);
@@ -1587,8 +1589,8 @@ function renderDaily(){
     // All stations for this team
     const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team&&s.state!=='taken'));
     // Today's stations (started today)
-    const todaySt=allSt.filter(s=>toLocalDate(s.started_at)===todayStr&&s.state!=='taken');
-    // Opened today = started today
+    // Opened today = stations that were STARTED today (active/paused/done, not queue entries)
+    const todaySt=allSt.filter(s=>toLocalDate(s.started_at)===todayStr&&s.state!=='taken'&&s.state!=='queue');
     const opened=todaySt.length;
     // Sent = done today
     const sent=allSt.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
@@ -1623,7 +1625,7 @@ function renderDaily(){
   }).join('');
 
   // Summary totals
-  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>s.state!=='taken'&&toLocalDate(s.started_at)===todayStr).length;
+  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>s.state!=='taken'&&s.state!=='queue'&&toLocalDate(s.started_at)===todayStr).length;
   const totalSent=lines.flatMap(l=>l.stations).filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
   const totalActive=lines.flatMap(l=>l.stations).filter(s=>s.state==='active'||s.state==='paused').length;
   const totalComplete=lines.filter(l=>l.fully_done).length;
