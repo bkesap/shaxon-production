@@ -865,6 +865,8 @@ function rebuildJobs(){
 function rebuildDone(){
   doneList=[];
   lines.forEach(line=>{
+    // Only show fully completed orders in Completed tab
+    if(!line.fully_done)return;
     const doneStations=line.stations.filter(s=>s.state==='done');
     if(!doneStations.length)return;
     // Only keep the latest done station per item
@@ -1603,11 +1605,7 @@ function renderDaily(){
 
     return `<div style="background:var(--bg1);border-radius:var(--r-lg);border:1px solid var(--bdr3);border-left:5px solid ${color};padding:14px 18px;display:flex;align-items:center;gap:0;">
       <div style="width:160px;font-size:15px;font-weight:600;color:var(--txt1);">${team}</div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-        <div style="text-align:center;padding:10px;background:var(--bg2);border-radius:var(--r-md);">
-          <div style="font-size:26px;font-weight:700;color:var(--txt1);">${allSt.length}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Total Open</div>
-        </div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
         <div style="text-align:center;padding:10px;background:var(--blue-lt);border-radius:var(--r-md);">
           <div style="font-size:26px;font-weight:700;color:var(--blue);">${opened}</div>
           <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Opened Today</div>
