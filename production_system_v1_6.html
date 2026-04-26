@@ -404,7 +404,7 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="nav-brand-sub">Production</div>
     </div>
   </div>
-  <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
+  <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Cong nhan</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
   <div class="nav-tab" id="completedTab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);cursor:pointer;"></span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
@@ -1937,31 +1937,19 @@ async function confirmAdminDelete(){
   setSyncDot('syncing');
   try{
     if(adminDelType==='station'){
-      // Get the station before deleting to know sent_qty
-      const delStation=jobs.find(j=>j.stationId===adminDelId)||queueItems.find(q=>q.id===adminDelId);
-      await sb.from('stations').delete().eq('id',adminDelId);
-      // Also find and fix any waiting station for same line
+      // Delete ALL stations for this line + the line itself
       if(adminDelLineId){
-        const waitingSt=lines.find(l=>l.id===adminDelLineId)?.stations?.find(s=>s.state==='waiting');
-        if(waitingSt){
-          // Reset waiting station — delete it so cutting shows clean
-          await sb.from('stations').delete().eq('id',waitingSt.id);
-        }
-        // Also delete queue entries for this line
-        const line=lines.find(l=>l.id===adminDelLineId);
-        if(line){
-          const queueSts=line.stations.filter(s=>s.state==='queue');
-          for(const qs of queueSts){
-            await sb.from('stations').delete().eq('id',qs.id);
-          }
-        }
+        await sb.from('stations').delete().eq('line_id',adminDelLineId);
+        await sb.from('lines').delete().eq('id',adminDelLineId);
+      } else {
+        await sb.from('stations').delete().eq('id',adminDelId);
       }
     } else if(adminDelType==='line'){
       await sb.from('stations').delete().eq('line_id',adminDelId);
       await sb.from('lines').delete().eq('id',adminDelId);
     }
     await loadAll();
-    showToast('Deleted — sync updated / Da xoa va cap nhat','green');
+    showToast('Deleted — sync updated','green');
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
