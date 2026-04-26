@@ -1799,9 +1799,10 @@ function soSyncPreview(){
   if(!raw.trim()){showToast('Paste SO list first','red');return;}
   // Parse pasted lines → build set of valid S0XXXXX keys
   const sapNums=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
-  const validSOs=new Set(sapNums.map(n=>'S0'+n.replace(/^S0/i,'')));
-  // Find lines in system that start with S0 but are NOT in SAP list
-  const toDelete=lines.filter(l=>l.so.startsWith('S0')&&!validSOs.has(l.so)&&!l.fully_done);
+  // Build a set of all SO values as-is from SAP list
+  const validSOs=new Set(sapNums);
+  // Find active lines NOT in SAP list (completed lines always kept)
+  const toDelete=lines.filter(l=>!validSOs.has(l.so)&&!l.fully_done);
   const result=document.getElementById('soSyncResult');
   if(!toDelete.length){
     result.style.display='block';
