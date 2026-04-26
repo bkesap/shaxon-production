@@ -403,8 +403,9 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
   <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
-  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);"></span></div>
+  <div class="nav-tab" id="completedTab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);cursor:pointer;"></span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
+  <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
 </div>
 
@@ -546,6 +547,21 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="dash-stat"><div class="dash-stat-val" id="ds-done">0</div><div class="dash-stat-lbl">Complete</div></div>
     </div>
     <div class="dash-body" id="dashBody"><div class="empty-dash">Loading...</div></div>
+  </div>
+</div>
+
+<!-- ══ DAILY DATA ══ -->
+<div class="page" id="page-daily">
+  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div class="panel-hdr" style="padding:10px 16px;">
+      <span class="panel-lbl">Daily Data — <span id="dailyDate">--</span></span>
+      <div style="margin-left:auto;">
+        <button onclick="renderDaily()" style="padding:5px 14px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:var(--r-md);font-size:12px;font-weight:500;cursor:pointer;">↻ Refresh</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px 16px;" id="dailyBody">
+      <div class="empty-dash">Loading...</div>
+    </div>
   </div>
 </div>
 
@@ -780,6 +796,7 @@ function showPage(p,el){
   if(p==='queue')renderQueue();
   if(p==='admin')renderAdmin();
   if(p==='completed')renderDonePanel();
+  if(p==='daily')renderDaily();
 }
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
@@ -1390,6 +1407,8 @@ function renderWorker(){
   cb.textContent=doneList.length;
   cb.className='queue-badge'+(doneList.length>0?' on':'');
   cb.style.background='var(--green)';
+  cb.style.cursor='pointer';
+  cb.onclick=function(e){e.stopPropagation();const tab=document.getElementById('completedTab');if(tab)tab.click();};
 
   const jl=document.getElementById('jobsList');
   if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';return;}
@@ -1505,6 +1524,72 @@ function renderDonePanel(){
       ${csHtml}
     </div>`;
   }).join('');
+}
+
+// ── RENDER DAILY DATA ────────────────────────────────────────────────────────
+function renderDaily(){
+  const body=document.getElementById('dailyBody');
+  if(!body)return;
+  const today=new Date();
+  const todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const toLocalDate=utcStr=>{if(!utcStr)return'';const d=new Date(utcStr);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  document.getElementById('dailyDate').textContent=today.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  const TEAMS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
+
+  const rows=TEAMS.map(team=>{
+    // All stations for this team
+    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team));
+    // Today's stations (started today)
+    const todaySt=allSt.filter(s=>toLocalDate(s.started_at)===todayStr&&s.state!=='taken');
+    // Opened today = started today
+    const opened=todaySt.length;
+    // Sent = done today
+    const sent=allSt.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+    // Active/waiting now
+    const active=allSt.filter(s=>s.state==='active'||s.state==='paused'||s.state==='waiting').length;
+    // Queue waiting for this team (items in queue that came from this team)
+    const inQueue=queueItems.filter(qi=>qi.fromGroup===team).length;
+
+    const color=team==='Cutting'?'var(--blue)':team==='Part Pull'?'#7b1fa2':team==='Testing / Packing'?'var(--green)':'var(--blue-m)';
+
+    return `<div style="background:var(--bg1);border-radius:var(--r-lg);border:1px solid var(--bdr3);border-left:5px solid ${color};padding:14px 18px;display:flex;align-items:center;gap:0;">
+      <div style="width:160px;font-size:15px;font-weight:600;color:var(--txt1);">${team}</div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div style="text-align:center;padding:10px;background:var(--bg2);border-radius:var(--r-md);">
+          <div style="font-size:26px;font-weight:700;color:var(--txt1);">${allSt.length}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Total Open</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--blue-lt);border-radius:var(--r-md);">
+          <div style="font-size:26px;font-weight:700;color:var(--blue);">${opened}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Opened Today</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--green-lt);border-radius:var(--r-md);">
+          <div style="font-size:26px;font-weight:700;color:var(--green);">${sent}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Sent Today</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--amber-lt);border-radius:var(--r-md);">
+          <div style="font-size:26px;font-weight:700;color:var(--amber);">${active}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Active Now</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Summary totals
+  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>toLocalDate(s.started_at)===todayStr).length;
+  const totalSent=lines.flatMap(l=>l.stations).filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+  const totalActive=lines.flatMap(l=>l.stations).filter(s=>s.state==='active'||s.state==='paused').length;
+  const totalComplete=lines.filter(l=>l.fully_done).length;
+
+  body.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+      <div class="dash-stat"><div class="dash-stat-val">${totalOpened}</div><div class="dash-stat-lbl">Jobs Opened Today</div></div>
+      <div class="dash-stat"><div class="dash-stat-val">${totalSent}</div><div class="dash-stat-lbl">Jobs Sent Today</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--amber);">${totalActive}</div><div class="dash-stat-lbl">Currently Active</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--green);">${totalComplete}</div><div class="dash-stat-lbl">Orders Complete</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">${rows}</div>`;
 }
 
 // ── RENDER QUEUE ──────────────────────────────────────────────────────────────
@@ -1663,6 +1748,15 @@ function adminLogout(){
   document.getElementById('adminPanel').classList.remove('on');
   document.getElementById('adminPw').value='';
 }
+function toggleAdminSection(id){
+  const el=document.getElementById(id);
+  const arrow=document.getElementById(id+'-arrow');
+  if(!el)return;
+  const isOpen=el.style.display!=='none';
+  el.style.display=isOpen?'none':'block';
+  if(arrow)arrow.textContent=isOpen?'▼':'▲';
+}
+
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
@@ -1694,18 +1788,34 @@ function renderAdmin(){
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
   </tr>`).join('');
 
+  const autoOpen=!!adminQ;
   body.innerHTML=`
     <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
-      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-active')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <span>Active Jobs (${jobs.filter(filterFn).length} shown / ${jobs.length} total)</span>
+        <span id="sec-active-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
+      </div>
+      <div id="sec-active" style="display:${autoOpen?'block':'none'};">
+        ${jobs.filter(filterFn).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+      </div>
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
-      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-queue')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <span>Queue (${queueItems.filter(filterFn).length} shown / ${queueItems.length} total)</span>
+        <span id="sec-queue-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
+      </div>
+      <div id="sec-queue" style="display:${autoOpen?'block':'none'};">
+        ${queueItems.filter(filterFn).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+      </div>
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
-      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-completed')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <span>Completed Orders (${lines.filter(l=>l.fully_done&&filterFn(l)).length} shown / ${lines.filter(l=>l.fully_done).length} total)</span>
+        <span id="sec-completed-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
+      </div>
+      <div id="sec-completed" style="display:${autoOpen?'block':'none'};">
+        ${lines.filter(l=>l.fully_done&&filterFn(l)).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      </div>
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr">⏱ Shift Settings / Cai dat ca lam viec</div>
@@ -1741,6 +1851,16 @@ function renderAdmin(){
           <span style="font-size:12px;color:var(--txt3);">Review before deleting</span>
         </div>
         <div id="soSyncResult" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-hdr">🧹 Clean Old Completed Orders</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+          Deletes completed orders older than <strong>10 business days</strong>. Active and in-progress orders are never touched.
+        </div>
+        <button onclick="cleanOldCompleted()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid var(--amber);border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧹 Clean Old Completed (10 business days)</button>
+        <div id="cleanResult" style="display:none;"></div>
       </div>
     </div>
     <div class="admin-section">
@@ -1852,6 +1972,47 @@ async function soSyncExecute(){
     showToast('✅ Deleted '+soList.length+' SO(s) from system','green');
     renderAdmin();
   }catch(err){console.error(err);setSyncDot('error');showToast('Error during sync','red');}
+}
+
+function getBusinessDaysAgo(days){
+  const date=new Date();
+  let count=0;
+  while(count<days){
+    date.setDate(date.getDate()-1);
+    const dow=date.getDay();
+    if(dow!==0&&dow!==6)count++;
+  }
+  return date.toISOString().slice(0,10);
+}
+
+async function cleanOldCompleted(){
+  const cutoff=getBusinessDaysAgo(10);
+  const oldLines=lines.filter(l=>{
+    if(!l.fully_done)return false;
+    // Find the latest done_at across all stations
+    const doneDates=l.stations.filter(s=>s.done_at).map(s=>s.done_at.slice(0,10));
+    if(!doneDates.length)return false;
+    const latest=doneDates.sort().pop();
+    return latest<cutoff;
+  });
+  if(!oldLines.length){
+    document.getElementById('cleanResult').style.display='block';
+    document.getElementById('cleanResult').innerHTML='<div style="color:var(--green);font-size:13px;">✅ No completed orders older than 10 business days found.</div>';
+    return;
+  }
+  if(!confirm('Delete '+oldLines.length+' completed order(s) older than 10 business days? Cannot be undone.'))return;
+  setSyncDot('syncing');
+  try{
+    for(const line of oldLines){
+      await sb.from('stations').delete().eq('line_id',line.id);
+      await sb.from('lines').delete().eq('id',line.id);
+    }
+    await loadAll();
+    showToast('✅ Deleted '+oldLines.length+' old completed order(s)','green');
+    document.getElementById('cleanResult').style.display='block';
+    document.getElementById('cleanResult').innerHTML='<div style="color:var(--green);font-size:13px;">✅ Deleted '+oldLines.length+' old completed orders.</div>';
+    renderAdmin();
+  }catch(err){console.error(err);setSyncDot('error');showToast('Error cleaning','red');}
 }
 
 async function adminDeleteAll(){
