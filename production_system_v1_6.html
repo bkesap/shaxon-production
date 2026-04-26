@@ -1539,7 +1539,7 @@ function renderDaily(){
 
   const rows=TEAMS.map(team=>{
     // All stations for this team
-    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team));
+    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team&&s.state!=='taken'));
     // Today's stations (started today)
     const todaySt=allSt.filter(s=>toLocalDate(s.started_at)===todayStr&&s.state!=='taken');
     // Opened today = started today
@@ -1577,7 +1577,7 @@ function renderDaily(){
   }).join('');
 
   // Summary totals
-  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>toLocalDate(s.started_at)===todayStr).length;
+  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>s.state!=='taken'&&toLocalDate(s.started_at)===todayStr).length;
   const totalSent=lines.flatMap(l=>l.stations).filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
   const totalActive=lines.flatMap(l=>l.stations).filter(s=>s.state==='active'||s.state==='paused').length;
   const totalComplete=lines.filter(l=>l.fully_done).length;
