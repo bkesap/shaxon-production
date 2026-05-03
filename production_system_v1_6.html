@@ -8,7 +8,7 @@
 <title>Shaxon Production v25</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
-<body style="margin:0;padding:0;">
+<body style="margin:0;padding:0;" autocomplete="off">
 <style>
 :root{
   --font:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
@@ -429,18 +429,18 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="ef f-so">
       <label>Sales Order <span class="vn">/ So don hang</span></label>
       <input type="text" id="inputSO" placeholder="SO-1042" oninput="onSOInput()" onblur="schedHideSO()"
-        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"/>
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       <div class="sug-box" id="soSug" style="display:none;"></div>
     </div>
     <div class="ef f-item">
       <label>Item No <span class="vn">/ Ma san pham</span></label>
       <input type="text" id="inputItem" placeholder="Type or select..." oninput="onItemInput()" onblur="schedHideItem()" onfocus="onItemFocus()"
-        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"/>
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       <div class="sug-box" id="itemSug" style="display:none;"></div>
     </div>
     <div class="ef f-qty">
       <label>Qty (pcs) <span class="vn">/ SL</span></label>
-      <input type="number" id="inputQty" placeholder="100" min="1"/>
+      <input type="number" id="inputQty" placeholder="100" min="1" data-lpignore="true" data-1p-ignore="true"/>
     </div>
     <button class="start-btn" onclick="handleStart()">START</button>
     <button class="start-btn" style="background:var(--blue-m);font-size:13px;padding:0 12px;" onclick="openBulkSO()" title="Add multiple items for one SO">+ Add SO</button>
@@ -485,7 +485,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <span class="panel-lbl">Active Jobs (<span id="activeCount">0</span>)</span>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="jobSearch" placeholder="Search..." oninput="renderWorker()"/>
+          <input class="job-search" type="text" id="jobSearch" placeholder="Search..." oninput="renderWorker()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
       </div>
       <div class="jobs-grid" id="jobsList">
@@ -505,7 +505,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="completedSearch" placeholder="Search SO or item..." oninput="renderDonePanel()"/>
+          <input class="job-search" type="text" id="completedSearch" placeholder="Search SO or item..." oninput="renderDonePanel()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
       </div>
     </div>
@@ -522,7 +522,7 @@ body{font-family:var(--font);background:var(--bg2);}
       <h2>Queue — Waiting for Next Station / Hang cho tram tiep theo</h2>
       <div class="job-search-wrap">
         <span class="job-search-ico">🔍</span>
-        <input class="job-search" type="text" id="queueSearch" placeholder="Search SO or item..." oninput="renderQueue()" autocomplete="off" autocorrect="off" spellcheck="false"/>
+        <input class="job-search" type="text" id="queueSearch" placeholder="Search SO or item..." oninput="renderQueue()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       </div>
     </div>
     <div class="queue-body" id="queueBody">
@@ -536,7 +536,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="dash-inner">
     <div class="dash-top">
       <h2>Dashboard</h2>
-      <input type="text" class="dash-search" id="dashSearch" placeholder="🔍 Search SO or item..." oninput="renderDash()" autocomplete="off"/>
+      <input type="text" class="dash-search" id="dashSearch" placeholder="🔍 Search SO or item..." oninput="renderDash()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       <select class="filter-sel" id="filterStatus" onchange="renderDash()">
         <option value="">All Status</option>
         <option>In Progress</option><option>Paused</option><option>Done</option><option>Not Started</option>
@@ -585,7 +585,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <h2>🔒 Admin Panel — Shaxon Production</h2>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()"/>
+          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
@@ -1829,6 +1829,7 @@ function checkAdminPw(){
   const pw=document.getElementById('adminPw').value;
   if(pw===ADMIN_PW){
     adminLoggedIn=true;
+    try{sessionStorage.setItem('shaxon_admin_ok','1');}catch(e){}
     document.getElementById('adminLogin').style.display='none';
     document.getElementById('adminPanel').classList.add('on');
     renderAdmin();
@@ -1838,8 +1839,20 @@ function checkAdminPw(){
     setTimeout(()=>document.getElementById('adminErr').style.display='none',2000);
   }
 }
+function checkRememberedAdmin(){
+  try{
+    if(sessionStorage.getItem('shaxon_admin_ok')==='1'){
+      adminLoggedIn=true;
+      const login=document.getElementById('adminLogin');
+      const panel=document.getElementById('adminPanel');
+      if(login)login.style.display='none';
+      if(panel)panel.classList.add('on');
+    }
+  }catch(e){}
+}
 function adminLogout(){
   adminLoggedIn=false;
+  try{sessionStorage.removeItem('shaxon_admin_ok');}catch(e){}
   document.getElementById('adminLogin').style.display='flex';
   document.getElementById('adminPanel').classList.remove('on');
   document.getElementById('adminPw').value='';
@@ -2724,6 +2737,7 @@ async function init(){
   updateShiftBar();
   await loadAll();
   setupRealtime();
+  checkRememberedAdmin();
   document.getElementById('connOverlay').classList.add('hidden');
   setInterval(tick,1000);
 }
