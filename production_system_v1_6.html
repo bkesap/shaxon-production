@@ -998,6 +998,12 @@ function schedHideItem(){itemHideT=setTimeout(()=>{document.getElementById('item
 
 // ── START ─────────────────────────────────────────────────────────────────────
 function handleStart(){
+  // Weekend check — no work allowed on weekends
+  const _wd=new Date().getDay();
+  if(_wd===0||_wd===6){
+    showToast('Weekend — no work allowed / Cuoi tuan — khong lam viec','red');
+    return;
+  }
   const team=document.getElementById('inputTeam').value.trim();
   const so=document.getElementById('inputSO').value.trim().toUpperCase();
   const item=document.getElementById('inputItem').value.trim().toUpperCase();
@@ -1468,7 +1474,9 @@ function renderWorker(){
   }
 
   jl.innerHTML=myJobs.map(j=>{
-    const el=j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0);
+    // Weekend = freeze the live timer (don't count weekend time)
+    const _isWE=(()=>{const d=new Date().getDay();return d===0||d===6;})();
+    const el=j.elapsed+(j.state==='active'&&j.startedAt&&!_isWE?Date.now()-j.startedAt:0);
     const isWaiting=j.state==='waiting';
     const isFinal=j.group===FINAL;
     const slCls=isWaiting?'sl-purple':j.state==='paused'?'sl-amber':'sl-green';
@@ -2295,6 +2303,25 @@ let shiftStartNotified=false;
 async function checkShiftEnd(){
   const si=getShiftInfo();
 
+  // ── Weekend → pause all active jobs
+  if(si.isWeekend&&!shiftEndNotified){
+    shiftEndNotified=true;
+    shiftStartNotified=false;
+    const activeJobs=jobs.filter(j=>j.state==='active');
+    if(activeJobs.length>0){
+      setSyncDot('syncing');
+      try{
+        for(const j of activeJobs){
+          const add=Date.now()-j.startedAt;
+          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
+        }
+        await loadAll();
+        showToast('⏸ Weekend — '+activeJobs.length+' job(s) paused / Cuoi tuan — tam dung','red');
+      }catch(e){setSyncDot('error');}
+    }
+    return;
+  }
+
   // ── Shift ENDED → pause all active jobs
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
@@ -2427,6 +2454,12 @@ function hideBulkSug(id){
 }
 
 async function handleBulkStart(){
+  // Weekend check
+  const _wd=new Date().getDay();
+  if(_wd===0||_wd===6){
+    showToast('Weekend — no work allowed / Cuoi tuan — khong lam viec','red');
+    return;
+  }
   const team=document.getElementById('inputTeam').value;
   if(!team||team==='__ALL__'){showToast('Select a team first');return;}
   const so=bulkSOValue;
