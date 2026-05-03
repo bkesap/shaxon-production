@@ -1023,10 +1023,44 @@ function handleStart(){
     return;
   }
   if(existingLine){
-    const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
-    if(activeHere){showWarn('amber','Already Active Here','Da bat dau roi',`<strong>${item}</strong> is already active at <strong>${team}</strong>.`,`San pham nay dang duoc lam tai nhom nay.`,'');return;}
-    const doneHere=existingLine.stations.find(s=>s.grp===team&&s.state==='done');
-    if(doneHere){showWarn('red','Already Completed Here','Da hoan thanh roi',`<strong>${item}</strong> was already completed at <strong>${team}</strong> at ${doneHere.done_at}.`,`San pham nay da hoan thanh tai tram nay.`,`<div class="modal-detail-row">Completed at: <strong>${doneHere.done_at}</strong></div>`);return;}
+    // STRICT RULE: aynı SO+Item zaten sistemde varsa yeni START yapılamaz.
+    // Sadece tüm kayıtları "taken" durumunda VEYA hiç ALIVE kaydı yoksa izin var.
+    // ALIVE = active, paused, waiting, done, queue
+    const ALIVE_STATES=['active','paused','waiting','done','queue'];
+    const aliveStations=existingLine.stations.filter(s=>ALIVE_STATES.includes(s.state));
+
+    // Item complete olmuşsa
+    if(existingLine.fully_done){
+      showWarn('red','Already Completed','Da hoan thanh',
+        `<strong>${item}</strong> for SO <strong>${so}</strong> is already marked as <strong>completed</strong>. Cannot start again.`,
+        `San pham nay da duoc danh dau HOAN THANH. Khong the bat dau lai.`,'');
+      return;
+    }
+
+    // Sistemde herhangi bir aktif kayıt varsa
+    if(aliveStations.length>0){
+      const states=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
+      const activeStation=aliveStations.find(s=>s.state==='active'||s.state==='paused');
+      const queueStation=aliveStations.find(s=>s.state==='queue');
+      let mainMsg,vnMsg;
+      if(activeStation){
+        mainMsg=`<strong>${item}</strong> is currently <strong>${activeStation.state}</strong> at <strong>${shortGrp(activeStation.grp)}</strong>. Cannot start a new copy.`;
+        vnMsg=`San pham dang lam tai ${shortGrp(activeStation.grp)}. Khong the bat dau ban moi.`;
+      } else if(queueStation){
+        mainMsg=`<strong>${item}</strong> is waiting in <strong>Queue</strong> for the next team. Cannot start a new copy at <strong>${team}</strong>.`;
+        vnMsg=`San pham dang trong Queue cho nhom tiep theo.`;
+      } else {
+        mainMsg=`<strong>${item}</strong> already exists in the system. Cannot start a new copy.`;
+        vnMsg=`San pham da co trong he thong.`;
+      }
+      showWarn('red','Already in System / Da co trong he thong','Cannot start duplicate',
+        mainMsg,vnMsg,
+        `<div class="modal-detail-row">Existing stations: <strong>${states}</strong></div>`);
+      return;
+    }
+
+    // Buraya gelinirse: existingLine var ama tum kayitlar "taken" — yeni START'a izin var
+    // Qty kontrolu yine de yapilsin
     const existingQty=parseInt(existingLine.qty)||0;
     if(qty!==existingQty){
       showWarn('amber','Quantity Mismatch / So luong khong khop','Hay kiem tra lai',
@@ -1035,8 +1069,6 @@ function handleStart(){
         `<div class="modal-detail-row">Previous qty: <strong>${existingLine.qty}</strong></div><div class="modal-detail-row">You entered: <strong>${qty} pcs</strong></div>`);
       return;
     }
-    const activeElsewhere=jobs.find(j=>j.lineId===existingLine.id&&j.group!==team&&(j.state==='active'||j.state==='paused'));
-    if(activeElsewhere){showWarn('red','In Progress Elsewhere','Dang lam o tram khac',`<strong>${item}</strong> is currently at <strong>${activeElsewhere.group}</strong>. It must be sent to queue first.`,`San pham dang duoc lam tai tram khac.`,`<div class="modal-detail-row">Active at: <strong>${activeElsewhere.group}</strong></div>`);return;}
   }
   confirmPending={team,so,item,qty,existingLine};
   document.getElementById('confirmGrid').innerHTML=`
@@ -2601,14 +2633,21 @@ async function handleBulkStart(){
   }
   if(!items.length){showToast('Add at least one item / Them it nhat mot san pham');return;}
 
-  // Validate
+  // Validate — strict duplicate check
+  const ALIVE_STATES=['active','paused','waiting','done','queue'];
   for(const {item,qty} of items){
     const existingLine=lines.find(l=>l.so===so&&l.item===item);
     if(existingLine){
-      const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
-      if(activeHere){showToast(item+' already active at '+team,'red');return;}
-      const doneHere=existingLine.stations.find(s=>s.grp===team&&s.state==='done');
-      if(doneHere){showToast(item+' already completed at '+team,'red');return;}
+      if(existingLine.fully_done){
+        showToast(item+' already completed / Da hoan thanh','red');
+        return;
+      }
+      const aliveStations=existingLine.stations.filter(s=>ALIVE_STATES.includes(s.state));
+      if(aliveStations.length>0){
+        const where=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
+        showToast(item+' already in system: '+where,'red');
+        return;
+      }
     }
   }
 
