@@ -901,7 +901,7 @@ function rebuildQueue(){
 }
 
 function setupRealtime(){
-  sb.channel('shaxon-prod-v25')
+  sb.channel('shaxon-prod-v21')
     .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>loadAll())
     .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>loadAll())
     .subscribe();
@@ -1007,12 +1007,11 @@ function handleStart(){
   if(!item){showToast('Enter Item No');return;}
   if(!qty){showToast('Enter quantity / Nhap so luong');return;}
   const existingLine=lines.find(l=>l.so===so&&l.item===item);
-  // Cutting ve Part Pull yeni siparis acabilir. Diger teamler queue'dan almali.
-  const GATE_TEAMS=['Cutting','Part Pull'];
-  if(!existingLine&&!GATE_TEAMS.includes(team)){
-    showWarn('red','Cannot Start Here','Release from Cutting or Part Pull only',
-      `New items can only be released by <strong>Cutting</strong> or <strong>Part Pull</strong>. Other teams must take items from the Queue.`,
-      `Chi Cutting hoac Part Pull moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
+  // Only Cutting can release new items. Other teams must take from queue.
+  if(!existingLine&&team!=='Cutting'){
+    showWarn('red','Cannot Start Here','Release from Cutting only',
+      `New items can only be released by <strong>Cutting</strong>. Other teams must take items from the Queue.`,
+      `Chi Cutting moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
       `<div class="modal-detail-row">Selected team: <strong>${team}</strong></div>`);
     return;
   }
@@ -1072,7 +1071,7 @@ async function confirmStart(){
     showToast('Started: '+so+' / '+item);
     await loadAll();
 
-    // If Cutting → ask about Part Pull (Part Pull kendi basina baslatilinca sorma)
+    // If Cutting → ask about Part Pull
     if(team==='Cutting'){
       const currentLine=lines.find(l=>l.so===so&&l.item===item);
       const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
@@ -1227,8 +1226,7 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
       // Cutting or Part Pull done — re-fetch fresh state from Supabase
       const {data:freshStations}=await sb.from('stations').select('*').eq('line_id',j.lineId);
       const cuttingDone=freshStations&&freshStations.some(s=>s.grp==='Cutting'&&s.state==='done');
-      // Part Pull 'exists' = aktif/paused/waiting/done kaydi var, taken veya queue sayilmaz
-      const partPullExists=freshStations&&freshStations.some(s=>s.grp==='Part Pull'&&['active','paused','waiting','done'].includes(s.state));
+      const partPullExists=freshStations&&freshStations.some(s=>s.grp==='Part Pull');
       const partPullDone=freshStations&&freshStations.some(s=>s.grp==='Part Pull'&&s.state==='done');
       const bothDone=cuttingDone&&(!partPullExists||partPullDone);
       // Always delete existing queue entries for this line to avoid duplicates
@@ -1338,10 +1336,9 @@ async function confirmTake(){
   if(C_TEAMS.includes(team)){
     const line=lines.find(l=>l.id===qi.lineId);
     const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    // Part Pull 'exists' = aktif/paused/waiting/done — hic acilmamissa lock yok
-    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull'&&['active','paused','waiting','done'].includes(s.state));
+    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
     const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-    if(!cuttingDone){showToast('🔒 Cutting not done yet / Cutting henuz bitmedi','red');return;}
+    if(partPullExists&&!cuttingDone){showToast('🔒 Cutting not done yet / Cutting henuz bitmedi','red');return;}
     if(partPullExists&&!partPullDone){showToast('🔒 Part Pull not done yet / Part Pull henuz bitmedi','red');return;}
   }
   closeModal('takeModal');
@@ -1656,13 +1653,11 @@ function renderQueue(){
     // Lock check: locked only if Part Pull exists but either Cutting or Part Pull not done yet
     const line=lines.find(l=>l.id===qi.lineId);
     const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    // Part Pull 'exists' = aktif/paused/waiting/done — hic acilmamissa lock yok
-    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull'&&['active','paused','waiting','done'].includes(s.state));
+    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
     const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
     // Only lock if Part Pull was opened but not yet done, OR cutting not done yet
-    // LOCKED: Cutting bitmemisse VEYA Part Pull acilmis ama bitmemisse
-    const isLocked=!cuttingDone||(partPullExists&&!partPullDone);
-    const lockReason=!cuttingDone?'Waiting: Cutting not done yet':(partPullExists&&!partPullDone?'Waiting: Part Pull not done yet':'');
+    const isLocked=partPullExists&&(!cuttingDone||!partPullDone);
+    const lockReason=isLocked?(cuttingDone?'Waiting: Part Pull not done yet':'Waiting: Cutting not done yet'):'';
     return `<div class="q-card" style="${isLocked?'opacity:0.7;':''}">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
