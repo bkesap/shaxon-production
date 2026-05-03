@@ -1963,62 +1963,64 @@ async function confirmAdminDelete(){
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║ SAP SO SYNC — KAPSAMLI DÜZELTME (v25.1)                                 ║
-// ║ Mevcut soSyncPreview ve soSyncExecute fonksiyonlarını bunlarla değiştir.║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ==========================================================================
+// SAP SO SYNC - COMPREHENSIVE FIX
+// Replaces soSyncPreview and soSyncExecute
+// ==========================================================================
 //
-// Düzeltilen sorunlar:
-// 1. String/Number uyumsuzluğu (DB integer dönerse JavaScript Set'te eşleşmez)
-// 2. Görünmez karakterler (\r, \t, sıfır genişlikte boşluk)
-// 3. Format farklılıkları (S0806500 vs 806500 vs SO-806500)
-// 4. fully_done filtresi (preview ile execute artık aynı listeyi kullanıyor)
-// 5. Queue/Active/Waiting durumu görünür
-// 6. Boş/geçersiz girdi koruması
-// 7. Debug log konsola yazılıyor
+// Issues fixed:
+// 1. String/Number mismatch (when DB returns integer, JS Set lookup fails)
+// 2. Invisible characters (\r, \t, zero-width spaces)
+// 3. Format differences (S0806500 vs 806500 vs SO-806500)
+// 4. fully_done filter (preview and execute now use the same list)
+// 5. Queue/Active/Waiting status is visible
+// 6. Empty/invalid input protection
+// 7. Debug logs to console
 
-// ── Yardımcı: SO numarasını standart formata çevir ──────────────────────────
-// "S0806500" → "806500", "  806500\r" → "806500", 806500 (number) → "806500"
-// Sadece rakamları tutar, başındaki harfleri ve boşlukları temizler.
+// Helper: normalize an SO number to a standard format
+// "S0806500" -> "806500", "  806500\r" -> "806500", 806500 (number) -> "806500"
+// Keeps only digits, strips leading letters and whitespace.
 function normalizeSO(val){
   if(val===null||val===undefined)return'';
-  // Number gelirse string'e çevir, görünmez karakterleri sil, sadece rakamları al
+  // Convert to string, strip invisible chars, then keep only digits
   const s=String(val).replace(/[\u200B-\u200D\uFEFF]/g,'').trim();
-  // Sadece rakamları çıkar: "S0806500" → "806500", "SO-806500" → "806500"
+  // Extract digits only: "S0806500" -> "806500", "SO-806500" -> "806500"
   const digits=s.replace(/\D/g,'');
   return digits;
 }
 
 function soSyncPreview(){
   const raw=document.getElementById('soSyncInput').value;
-  if(!raw.trim()){showToast('Paste SO list first / Önce SO listesini yapıştır','red');return;}
+  if(!raw.trim()){showToast('Paste SO list first / Hay dán danh sách SO trước','red');return;}
 
-  // ── Yapıştırılan listeyi normalize et
+  // Normalize the pasted list
   const sapNumsRaw=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
   const sapNumsNormalized=sapNumsRaw.map(normalizeSO).filter(s=>s.length>0);
   const validSOs=new Set(sapNumsNormalized);
 
-  console.log('[SAP Sync] Yapıştırılan ham sayı:',sapNumsRaw.length);
-  console.log('[SAP Sync] Normalize sonrası:',sapNumsNormalized.length);
-  console.log('[SAP Sync] İlk 5 SAP SO:',sapNumsNormalized.slice(0,5));
+  console.log('[SAP Sync] Pasted raw count:',sapNumsRaw.length);
+  console.log('[SAP Sync] After normalize:',sapNumsNormalized.length);
+  console.log('[SAP Sync] First 5 SAP SOs:',sapNumsNormalized.slice(0,5));
 
   if(!validSOs.size){
-    showToast('No valid SO numbers found / Geçerli SO bulunamadı','red');
+    showToast('No valid SO numbers found / Không tìm thấy số SO hợp lệ','red');
     return;
   }
 
-  // ── Sistemdeki SO'ları normalize ederek karşılaştır
-  // Her line için: SO normalize edilince listede var mı?
+  // Normalize system SOs and compare
+  // For each line: is the normalized SO in the SAP set?
+  // IMPORTANT: do NOT touch fully_done lines — "Clean Old Completed" handles those
   const toDelete=lines.filter(l=>{
+    if(l.fully_done)return false; // Keep completed lines
     const lineSONorm=normalizeSO(l.so);
-    if(!lineSONorm)return false; // Boş/geçersiz SO'ları atla (güvenli)
+    if(!lineSONorm)return false; // Skip empty/invalid SOs (safe)
     return !validSOs.has(lineSONorm);
   });
 
-  console.log('[SAP Sync] Sistemdeki toplam line:',lines.length);
-  console.log('[SAP Sync] Sistemdeki ilk 5 SO:',lines.slice(0,5).map(l=>({so:l.so,normalized:normalizeSO(l.so),type:typeof l.so})));
-  console.log('[SAP Sync] Silinecek line sayısı:',toDelete.length);
-  console.log('[SAP Sync] Silinecek ilk 5 SO:',toDelete.slice(0,5).map(l=>l.so));
+  console.log('[SAP Sync] Total lines in system:',lines.length);
+  console.log('[SAP Sync] First 5 system SOs:',lines.slice(0,5).map(l=>({so:l.so,normalized:normalizeSO(l.so),type:typeof l.so})));
+  console.log('[SAP Sync] Lines to delete:',toDelete.length);
+  console.log('[SAP Sync] First 5 to delete:',toDelete.slice(0,5).map(l=>l.so));
 
   const result=document.getElementById('soSyncResult');
   if(!toDelete.length){
@@ -2027,7 +2029,7 @@ function soSyncPreview(){
     return;
   }
 
-  // ── Her line'ın gerçek durumunu hesapla
+  // Compute the real status of each line
   const getLineStatus=l=>{
     if(l.fully_done)return{label:'Completed',color:'var(--green-lt)',text:'#1b5e20',icon:'✓'};
     const sts=l.stations||[];
@@ -2044,13 +2046,13 @@ function soSyncPreview(){
     return{label:parts.join(' · '),color:'var(--amber-lt)',text:'var(--amber-dk)',icon:'⚠️'};
   };
 
-  // ── Risk sayımı
+  // Risk counts
   const activeCount=toDelete.filter(l=>!l.fully_done&&l.stations.some(s=>['active','paused'].includes(s.state))).length;
   const queueCount=toDelete.filter(l=>l.stations.some(s=>s.state==='queue')).length;
   const completedCount=toDelete.filter(l=>l.fully_done).length;
   const waitingCount=toDelete.filter(l=>!l.fully_done&&l.stations.some(s=>s.state==='waiting')).length;
 
-  // ── SO bazında grupla (aynı SO'nun farklı item'larını bir arada göster)
+  // Group by SO (show items of the same SO together)
   const bySO={};
   toDelete.forEach(l=>{
     if(!bySO[l.so])bySO[l.so]=[];
@@ -2069,20 +2071,19 @@ function soSyncPreview(){
     </tr>`;
   })).join('');
 
-  // ── Uyarı banner'ları
+  // Warning banners
   let warnings='';
   if(activeCount>0){
-    warnings+=`<div style="background:#FFEBEE;border-left:4px solid var(--red);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--red-dk);"><strong>⚠️ ${activeCount} order(s) currently being worked on!</strong> Workers will lose their progress.<br><span style="font-style:italic;">${activeCount} sipariş şu an çalışılıyor — işçi emeği kaybolacak.</span></div>`;
+    warnings+=`<div style="background:#FFEBEE;border-left:4px solid var(--red);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--red-dk);"><strong>⚠️ ${activeCount} order(s) currently being worked on!</strong> Workers will lose their progress.<br><span style="font-style:italic;">${activeCount} đơn hàng đang được làm — công sức sẽ mất.</span></div>`;
   }
   if(queueCount>0){
-    warnings+=`<div style="background:#F3E5F5;border-left:4px solid #7b1fa2;border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:#6a1b9a;"><strong>⚠️ ${queueCount} order(s) waiting in Queue</strong> for another team to pick up.<br><span style="font-style:italic;">${queueCount} sipariş queue'da başka takım tarafından bekleniyor.</span></div>`;
+    warnings+=`<div style="background:#F3E5F5;border-left:4px solid #7b1fa2;border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:#6a1b9a;"><strong>⚠️ ${queueCount} order(s) waiting in Queue</strong> for another team to pick up.<br><span style="font-style:italic;">${queueCount} đơn hàng đang chờ trong queue cho nhóm khác.</span></div>`;
   }
   if(waitingCount>0){
     warnings+=`<div style="background:#FFF3E0;border-left:4px solid var(--amber);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--amber-dk);"><strong>⚠️ ${waitingCount} order(s) have partial quantities</strong> waiting at their station.</div>`;
   }
-  if(completedCount>0){
-    warnings+=`<div style="background:var(--bg2);border-left:4px solid var(--txt2);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--txt2);"><strong>ℹ️ ${completedCount} completed order(s)</strong> will also be deleted (history will be lost).</div>`;
-  }
+  // Completed warning removed - SAP Sync no longer touches completed lines
+  // (the existing "Clean Old Completed" button handles those)
 
   result.style.display='block';
   result.innerHTML=`
@@ -2102,16 +2103,16 @@ function soSyncPreview(){
     </table>
     <button onclick="soSyncExecute()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete All These Orders</button>`;
 
-  // Preview'da gösterilen line ID'lerini sakla → execute aynı listeyi silecek
+  // Save the line IDs shown in preview -> execute will delete the same list
   window._soSyncPending=toDelete.map(l=>l.id);
 }
 
 async function soSyncExecute(){
   const lineIds=window._soSyncPending||[];
   if(!lineIds.length){showToast('Nothing to delete','red');return;}
-  if(!confirm('Delete '+lineIds.length+' line(s) from system?\n\nThis includes active jobs, queue items, waiting items, and completed history.\nThis cannot be undone.\n\n'+lineIds.length+' satır silinecek (aktif, queue, bekleyen, tamamlanmış dahil). Geri alınamaz.'))return;
+  if(!confirm('Delete '+lineIds.length+' line(s) from system?\n\nThis includes active jobs, queue items, and waiting items.\nCompleted orders are NOT touched.\nThis cannot be undone.\n\nXóa '+lineIds.length+' dòng khỏi hệ thống?\nBao gồm công việc đang hoạt động, hàng đợi và đang chờ.\nĐơn hàng đã hoàn thành KHÔNG bị xóa.\nKhông thể hoàn tác.'))return;
   setSyncDot('syncing');
-  console.log('[SAP Sync] Silme başlıyor:',lineIds.length,'line');
+  console.log('[SAP Sync] Starting delete:',lineIds.length,'lines');
   try{
     let deleted=0;
     for(const lineId of lineIds){
@@ -2122,14 +2123,14 @@ async function soSyncExecute(){
     await loadAll();
     document.getElementById('soSyncResult').style.display='none';
     document.getElementById('soSyncInput').value='';
-    showToast('✅ Deleted '+deleted+' line(s) / '+deleted+' satır silindi','green');
-    console.log('[SAP Sync] Silme tamamlandı:',deleted,'line');
+    showToast('✅ Deleted '+deleted+' line(s) / Đã xóa '+deleted+' dòng','green');
+    console.log('[SAP Sync] Delete complete:',deleted,'lines');
     window._soSyncPending=null;
     renderAdmin();
   }catch(err){
-    console.error('[SAP Sync] Hata:',err);
+    console.error('[SAP Sync] Error:',err);
     setSyncDot('error');
-    showToast('Error during sync / Sync hatası','red');
+    showToast('Error during sync / Lỗi đồng bộ','red');
   }
 }
 
