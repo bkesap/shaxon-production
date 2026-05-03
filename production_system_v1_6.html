@@ -1013,11 +1013,12 @@ function handleStart(){
   if(!item){showToast('Enter Item No');return;}
   if(!qty){showToast('Enter quantity / Nhap so luong');return;}
   const existingLine=lines.find(l=>l.so===so&&l.item===item);
-  // Only Cutting can release new items. Other teams must take from queue.
-  if(!existingLine&&team!=='Cutting'){
-    showWarn('red','Cannot Start Here','Release from Cutting only',
-      `New items can only be released by <strong>Cutting</strong>. Other teams must take items from the Queue.`,
-      `Chi Cutting moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
+  // Cutting ve Part Pull yeni siparis acabilir. Diger teamler queue'dan almali.
+  const GATE_TEAMS=['Cutting','Part Pull'];
+  if(!existingLine&&!GATE_TEAMS.includes(team)){
+    showWarn('red','Cannot Start Here','Release from Cutting or Part Pull only',
+      `New items can only be released by <strong>Cutting</strong> or <strong>Part Pull</strong>. Other teams must take items from the Queue.`,
+      `Chi Cutting hoac Part Pull moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
       `<div class="modal-detail-row">Selected team: <strong>${team}</strong></div>`);
     return;
   }
@@ -1077,19 +1078,21 @@ async function confirmStart(){
     showToast('Started: '+so+' / '+item);
     await loadAll();
 
-    // If Cutting → ask about Part Pull
+    // If Cutting → automatically start Part Pull as well (mandatory, no modal)
     if(team==='Cutting'){
       const currentLine=lines.find(l=>l.so===so&&l.item===item);
-      const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
-      const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
-      if(!ppActive&&!ppDone){
-        partPullPending={so,item,qty,lineId:currentLine?.id||lineId};
-        document.getElementById('partPullCtx').textContent=so+' / '+item+' — '+qty+' pcs';
-        document.getElementById('partPullGrid').innerHTML=`
-          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
-          <span class="cg-lbl">Item No</span><span class="cg-val">${item}</span>
-          <span class="cg-lbl">Qty</span><span class="cg-val big">${qty} pcs</span>`;
-        document.getElementById('partPullModal').classList.add('open');
+      const ALIVE=['active','paused','waiting','done'];
+      const ppExists=currentLine&&currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
+      if(!ppExists&&currentLine){
+        try{
+          await sb.from('stations').insert({
+            line_id:currentLine.id,grp:'Part Pull',state:'active',
+            started_at:new Date().toISOString(),elapsed_ms:0,
+            done_at:null,note:null,sent_qty:0,remaining_qty:qty
+          });
+          await loadAll();
+          showToast('✓ Part Pull auto-started','green');
+        }catch(err){console.error('Auto Part Pull error',err);showToast('Error auto-starting Part Pull','red');}
       }
     }
   }catch(err){console.error(err);setSyncDot('error');showToast('Error starting','red');}
@@ -1661,14 +1664,18 @@ function renderQueue(){
   }
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
-    // Lock check: locked only if Part Pull exists but either Cutting or Part Pull not done yet
+    // Lock check: ALIVE-only existence (taken/queue records do not count as "open")
     const line=lines.find(l=>l.id===qi.lineId);
+    const ALIVE_Q=['active','paused','waiting','done'];
+    const cuttingExists=line&&line.stations.some(s=>s.grp==='Cutting'&&ALIVE_Q.includes(s.state));
     const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
+    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull'&&ALIVE_Q.includes(s.state));
     const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-    // Only lock if Part Pull was opened but not yet done, OR cutting not done yet
-    const isLocked=partPullExists&&(!cuttingDone||!partPullDone);
-    const lockReason=isLocked?(cuttingDone?'Waiting: Part Pull not done yet':'Waiting: Cutting not done yet'):'';
+    // Locked if either gate exists but is not done
+    const cuttingMissing=cuttingExists&&!cuttingDone;
+    const partPullMissing=partPullExists&&!partPullDone;
+    const isLocked=cuttingMissing||partPullMissing;
+    const lockReason=cuttingMissing?'Waiting: Cutting not done yet':(partPullMissing?'Waiting: Part Pull not done yet':'');
     return `<div class="q-card" style="${isLocked?'opacity:0.7;':''}">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
@@ -2517,21 +2524,27 @@ async function handleBulkStart(){
     await loadAll();
     showToast('✓ Started '+started+' items for '+so,'green');
 
-    // If Cutting → ask about Part Pull for all items
+    // If Cutting → automatically start Part Pull for all items (mandatory, no modal)
     if(team==='Cutting'&&items.length>0){
-      const ppItems=items.filter(({item,qty})=>{
+      const ALIVE=['active','paused','waiting','done'];
+      let ppStarted=0;
+      for(const {item,qty} of items){
         const currentLine=lines.find(l=>l.so===so&&l.item===item);
-        const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
-        const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
-        return !ppActive&&!ppDone;
-      });
-      if(ppItems.length>0){
-        partPullPending={so,items:ppItems,bulk:true};
-        document.getElementById('partPullCtx').textContent=so+' — '+ppItems.length+' item(s)';
-        document.getElementById('partPullGrid').innerHTML=`
-          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
-          <span class="cg-lbl">Items</span><span class="cg-val">${ppItems.map(x=>x.item).join(', ')}</span>`;
-        document.getElementById('partPullModal').classList.add('open');
+        if(!currentLine)continue;
+        const ppExists=currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
+        if(ppExists)continue;
+        try{
+          await sb.from('stations').insert({
+            line_id:currentLine.id,grp:'Part Pull',state:'active',
+            started_at:new Date().toISOString(),elapsed_ms:0,
+            done_at:null,note:null,sent_qty:0,remaining_qty:qty
+          });
+          ppStarted++;
+        }catch(err){console.error('Auto Part Pull error',err);}
+      }
+      if(ppStarted>0){
+        await loadAll();
+        showToast('✓ Part Pull auto-started for '+ppStarted+' item(s)','green');
       }
     }
   }catch(err){
