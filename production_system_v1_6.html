@@ -1968,6 +1968,11 @@ function normalizeSO(val){
   if(val===null||val===undefined)return'';
   return String(val).replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\D/g,'');
 }
+// A line is "truly finished" only if all stations are done/taken (no queue/active/paused/waiting left)
+function isLineTrulyFinished(l){
+  if(!l.stations||!l.stations.length)return false;
+  return l.stations.every(s=>s.state==='done'||s.state==='taken');
+}
 function soSyncPreview(){
   const raw=document.getElementById('soSyncInput').value;
   if(!raw.trim()){showToast('Paste SO list first','red');return;}
@@ -1976,7 +1981,7 @@ function soSyncPreview(){
   // Build a set of all SO values as-is from SAP list
   const validSOs=new Set(sapNums.map(normalizeSO).filter(s=>s));
   // Find active lines NOT in SAP list (completed lines always kept)
-  const toDelete=lines.filter(l=>!l.fully_done&&!validSOs.has(normalizeSO(l.so)));
+  const toDelete=lines.filter(l=>!isLineTrulyFinished(l)&&!validSOs.has(normalizeSO(l.so)));
   const result=document.getElementById('soSyncResult');
   if(!toDelete.length){
     result.style.display='block';
