@@ -1963,175 +1963,63 @@ async function confirmAdminDelete(){
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
-// ==========================================================================
-// SAP SO SYNC - COMPREHENSIVE FIX
-// Replaces soSyncPreview and soSyncExecute
-// ==========================================================================
-//
-// Issues fixed:
-// 1. String/Number mismatch (when DB returns integer, JS Set lookup fails)
-// 2. Invisible characters (\r, \t, zero-width spaces)
-// 3. Format differences (S0806500 vs 806500 vs SO-806500)
-// 4. fully_done filter (preview and execute now use the same list)
-// 5. Queue/Active/Waiting status is visible
-// 6. Empty/invalid input protection
-// 7. Debug logs to console
-
-// Helper: normalize an SO number to a standard format
-// "S0806500" -> "806500", "  806500\r" -> "806500", 806500 (number) -> "806500"
-// Keeps only digits, strips leading letters and whitespace.
+// ── SO SYNC ──────────────────────────────────────────────────────────────────
 function normalizeSO(val){
   if(val===null||val===undefined)return'';
-  // Convert to string, strip invisible chars, then keep only digits
-  const s=String(val).replace(/[\u200B-\u200D\uFEFF]/g,'').trim();
-  // Extract digits only: "S0806500" -> "806500", "SO-806500" -> "806500"
-  const digits=s.replace(/\D/g,'');
-  return digits;
+  return String(val).replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\D/g,'');
 }
-
 function soSyncPreview(){
   const raw=document.getElementById('soSyncInput').value;
-  if(!raw.trim()){showToast('Paste SO list first / Hay dán danh sách SO trước','red');return;}
-
-  // Normalize the pasted list
-  const sapNumsRaw=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
-  const sapNumsNormalized=sapNumsRaw.map(normalizeSO).filter(s=>s.length>0);
-  const validSOs=new Set(sapNumsNormalized);
-
-  console.log('[SAP Sync] Pasted raw count:',sapNumsRaw.length);
-  console.log('[SAP Sync] After normalize:',sapNumsNormalized.length);
-  console.log('[SAP Sync] First 5 SAP SOs:',sapNumsNormalized.slice(0,5));
-
-  if(!validSOs.size){
-    showToast('No valid SO numbers found / Không tìm thấy số SO hợp lệ','red');
-    return;
-  }
-
-  // Normalize system SOs and compare
-  // For each line: is the normalized SO in the SAP set?
-  // IMPORTANT: do NOT touch fully_done lines — "Clean Old Completed" handles those
-  const toDelete=lines.filter(l=>{
-    if(l.fully_done)return false; // Keep completed lines
-    const lineSONorm=normalizeSO(l.so);
-    if(!lineSONorm)return false; // Skip empty/invalid SOs (safe)
-    return !validSOs.has(lineSONorm);
-  });
-
-  console.log('[SAP Sync] Total lines in system:',lines.length);
-  console.log('[SAP Sync] First 5 system SOs:',lines.slice(0,5).map(l=>({so:l.so,normalized:normalizeSO(l.so),type:typeof l.so})));
-  console.log('[SAP Sync] Lines to delete:',toDelete.length);
-  console.log('[SAP Sync] First 5 to delete:',toDelete.slice(0,5).map(l=>l.so));
-
+  if(!raw.trim()){showToast('Paste SO list first','red');return;}
+  // Parse pasted lines → build set of valid S0XXXXX keys
+  const sapNums=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
+  // Build a set of all SO values as-is from SAP list
+  const validSOs=new Set(sapNums.map(normalizeSO).filter(s=>s));
+  // Find active lines NOT in SAP list (completed lines always kept)
+  const toDelete=lines.filter(l=>!l.fully_done&&!validSOs.has(normalizeSO(l.so)));
   const result=document.getElementById('soSyncResult');
   if(!toDelete.length){
     result.style.display='block';
-    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ All orders in system match SAP list. Nothing to delete.<br><span style="font-size:11px;color:var(--txt3);">${lines.length} line(s) checked, ${validSOs.size} SAP number(s) processed.</span></div>`;
+    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ All S0 orders in system match SAP list. Nothing to delete.</div>`;
     return;
   }
-
-  // Compute the real status of each line
-  const getLineStatus=l=>{
-    if(l.fully_done)return{label:'Completed',color:'var(--green-lt)',text:'#1b5e20',icon:'✓'};
-    const sts=l.stations||[];
-    const active=sts.filter(s=>s.state==='active');
-    const paused=sts.filter(s=>s.state==='paused');
-    const waiting=sts.filter(s=>s.state==='waiting');
-    const queue=sts.filter(s=>s.state==='queue');
-    const parts=[];
-    if(active.length)parts.push(`⚡ Active (${active.map(s=>shortGrp(s.grp)).join(', ')})`);
-    if(paused.length)parts.push(`⏸ Paused (${paused.map(s=>shortGrp(s.grp)).join(', ')})`);
-    if(waiting.length)parts.push(`⏳ Waiting (${waiting.map(s=>shortGrp(s.grp)).join(', ')})`);
-    if(queue.length)parts.push(`🕐 In Queue (from ${queue.map(s=>shortGrp(s.from_grp||s.grp)).join(', ')})`);
-    if(!parts.length)return{label:'Not Started',color:'var(--bg2)',text:'var(--txt2)',icon:'○'};
-    return{label:parts.join(' · '),color:'var(--amber-lt)',text:'var(--amber-dk)',icon:'⚠️'};
-  };
-
-  // Risk counts
-  const activeCount=toDelete.filter(l=>!l.fully_done&&l.stations.some(s=>['active','paused'].includes(s.state))).length;
-  const queueCount=toDelete.filter(l=>l.stations.some(s=>s.state==='queue')).length;
-  const completedCount=toDelete.filter(l=>l.fully_done).length;
-  const waitingCount=toDelete.filter(l=>!l.fully_done&&l.stations.some(s=>s.state==='waiting')).length;
-
-  // Group by SO (show items of the same SO together)
-  const bySO={};
-  toDelete.forEach(l=>{
-    if(!bySO[l.so])bySO[l.so]=[];
-    bySO[l.so].push(l);
-  });
-  const soKeys=Object.keys(bySO).sort();
-
-  const rows=soKeys.flatMap(so=>bySO[so].map((l,idx)=>{
-    const st=getLineStatus(l);
-    const soCell=idx===0?`<td rowspan="${bySO[so].length}" style="font-weight:600;color:var(--red);vertical-align:top;border-right:2px solid var(--bdr3);">${so}<br><span style="font-size:10px;color:var(--txt3);font-weight:400;">${bySO[so].length} item${bySO[so].length>1?'s':''}</span></td>`:'';
-    return `<tr>
-      ${soCell}
-      <td>${l.item}</td>
-      <td>${l.qty}</td>
-      <td><span style="font-size:11px;padding:3px 8px;border-radius:6px;background:${st.color};color:${st.text};font-weight:500;">${st.icon} ${st.label}</span></td>
-    </tr>`;
-  })).join('');
-
-  // Warning banners
-  let warnings='';
-  if(activeCount>0){
-    warnings+=`<div style="background:#FFEBEE;border-left:4px solid var(--red);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--red-dk);"><strong>⚠️ ${activeCount} order(s) currently being worked on!</strong> Workers will lose their progress.<br><span style="font-style:italic;">${activeCount} đơn hàng đang được làm — công sức sẽ mất.</span></div>`;
-  }
-  if(queueCount>0){
-    warnings+=`<div style="background:#F3E5F5;border-left:4px solid #7b1fa2;border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:#6a1b9a;"><strong>⚠️ ${queueCount} order(s) waiting in Queue</strong> for another team to pick up.<br><span style="font-style:italic;">${queueCount} đơn hàng đang chờ trong queue cho nhóm khác.</span></div>`;
-  }
-  if(waitingCount>0){
-    warnings+=`<div style="background:#FFF3E0;border-left:4px solid var(--amber);border-radius:var(--r-md);padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--amber-dk);"><strong>⚠️ ${waitingCount} order(s) have partial quantities</strong> waiting at their station.</div>`;
-  }
-  // Completed warning removed - SAP Sync no longer touches completed lines
-  // (the existing "Clean Old Completed" button handles those)
-
+  const rows=toDelete.map(l=>`<tr>
+    <td style="font-weight:600;color:var(--red);">${l.so}</td>
+    <td>${l.item}</td>
+    <td>${l.qty}</td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${l.fully_done?'var(--green-lt)':'var(--amber-lt)'};color:${l.fully_done?'#1b5e20':'var(--amber-dk)'};">${l.fully_done?'Complete':'Active'}</span></td>
+  </tr>`).join('');
   result.style.display='block';
   result.innerHTML=`
     <div style="background:var(--red-lt);border:1px solid #FFCDD2;border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--red-dk);">
-      🗑 <strong>${toDelete.length} line(s)</strong> from <strong>${soKeys.length} SO(s)</strong> will be deleted — not found in SAP list.
-      <br><span style="font-size:11px;color:var(--txt3);">SAP list contains ${validSOs.size} SO(s). Checked ${lines.length} line(s) in system.</span>
+      ⚠️ <strong>${toDelete.length} line(s)</strong> from <strong>${[...new Set(toDelete.map(l=>l.so))].length} SO(s)</strong> will be deleted — not found in SAP list.
     </div>
-    ${warnings}
     <table class="admin-table" style="margin-bottom:12px;">
-      <thead><tr>
-        <th style="width:120px;">Sales Order</th>
-        <th>Item</th>
-        <th style="width:80px;">Qty</th>
-        <th>Current Status</th>
-      </tr></thead>
+      <thead><tr><th>Sales Order</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <button onclick="soSyncExecute()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete All These Orders</button>`;
-
-  // Save the line IDs shown in preview -> execute will delete the same list
-  window._soSyncPending=toDelete.map(l=>l.id);
+    <button onclick="soSyncExecute()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete These Orders</button>`;
+  window._soSyncPending=[...new Set(toDelete.map(l=>l.so))];
 }
 
 async function soSyncExecute(){
-  const lineIds=window._soSyncPending||[];
-  if(!lineIds.length){showToast('Nothing to delete','red');return;}
-  if(!confirm('Delete '+lineIds.length+' line(s) from system?\n\nThis includes active jobs, queue items, and waiting items.\nCompleted orders are NOT touched.\nThis cannot be undone.\n\nXóa '+lineIds.length+' dòng khỏi hệ thống?\nBao gồm công việc đang hoạt động, hàng đợi và đang chờ.\nĐơn hàng đã hoàn thành KHÔNG bị xóa.\nKhông thể hoàn tác.'))return;
+  const soList=window._soSyncPending||[];
+  if(!confirm('Delete '+soList.length+' sales order(s) from system? This cannot be undone.'))return;
   setSyncDot('syncing');
-  console.log('[SAP Sync] Starting delete:',lineIds.length,'lines');
   try{
-    let deleted=0;
-    for(const lineId of lineIds){
-      await sb.from('stations').delete().eq('line_id',lineId);
-      await sb.from('lines').delete().eq('id',lineId);
-      deleted++;
+    for(const so of soList){
+      const soLines=lines.filter(l=>l.so===so);
+      for(const line of soLines){
+        await sb.from('stations').delete().eq('line_id',line.id);
+        await sb.from('lines').delete().eq('id',line.id);
+      }
     }
     await loadAll();
     document.getElementById('soSyncResult').style.display='none';
     document.getElementById('soSyncInput').value='';
-    showToast('✅ Deleted '+deleted+' line(s) / Đã xóa '+deleted+' dòng','green');
-    console.log('[SAP Sync] Delete complete:',deleted,'lines');
-    window._soSyncPending=null;
+    showToast('✅ Deleted '+soList.length+' SO(s) from system','green');
     renderAdmin();
-  }catch(err){
-    console.error('[SAP Sync] Error:',err);
-    setSyncDot('error');
-    showToast('Error during sync / Lỗi đồng bộ','red');
-  }
+  }catch(err){console.error(err);setSyncDot('error');showToast('Error during sync','red');}
 }
 
 async function fixLegacyQueue(){
