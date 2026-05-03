@@ -1928,6 +1928,19 @@ function renderAdmin(){
       </div>
     </div>
     <div class="admin-section">
+      <div class="admin-section-hdr">🧟 Clean Stuck Cutting / Part Pull (Zombie)</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+          Finds Cutting/Part Pull stations stuck as <strong>active/paused/waiting</strong> when they should not be:
+          <br>• A C1-C4 team has already started or finished the same item
+          <br>• The item is already marked as completed
+          <br>Marks them as <strong>taken</strong> (hidden, history kept).
+        </div>
+        <button onclick="findZombies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧟 Find Zombies</button>
+        <div id="zombieResult" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="admin-section">
       <div class="admin-section-hdr">🧹 Clean Old Completed Orders</div>
       <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
         <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
@@ -2102,6 +2115,107 @@ function getBusinessDaysAgo(days){
     if(dow!==0&&dow!==6)count++;
   }
   return date.toISOString().slice(0,10);
+}
+
+// ── ZOMBIE CLEANER ──────────────────────────────────────────────────────────
+function detectZombies(){
+  const ALIVE=['active','paused','waiting'];
+  const C_TEAMS=['C1','C2','C3','C4'];
+  const FINAL_TEAM='Testing / Packing';
+  const zombies=[];
+  for(const line of lines){
+    const sts=line.stations||[];
+    // Has any C-team or Testing station ever been started or done?
+    const cOrTestingActivity=sts.some(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&['active','paused','waiting','done','taken'].includes(s.state));
+    // Is the line marked complete?
+    const isComplete=line.fully_done===true;
+    // Find stuck Cutting/Part Pull stations
+    sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&ALIVE.includes(s.state)).forEach(s=>{
+      let reason=null;
+      if(isComplete){
+        reason='Item already completed';
+      } else if(cOrTestingActivity){
+        reason='C1-C4 or Testing already worked on this item';
+      }
+      if(reason){
+        zombies.push({
+          stationId:s.id,
+          lineId:line.id,
+          so:line.so,
+          item:line.item,
+          qty:line.qty,
+          grp:s.grp,
+          state:s.state,
+          reason:reason
+        });
+      }
+    });
+  }
+  return zombies;
+}
+
+function findZombies(){
+  const result=document.getElementById('zombieResult');
+  const zombies=detectZombies();
+  if(!zombies.length){
+    result.style.display='block';
+    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No zombie stations found. System is clean.</div>`;
+    return;
+  }
+  // Group by reason for cleaner display
+  const rows=zombies.map(z=>`<tr>
+    <td style="font-weight:600;color:var(--blue);">${z.so}</td>
+    <td class="item-num" title="${z.item}">${z.item}</td>
+    <td>${z.qty}</td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${z.grp==='Cutting'?'var(--blue-lt)':'#F3E5F5'};color:${z.grp==='Cutting'?'var(--blue-dk)':'#6a1b9a'};">${z.grp}</span></td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${z.state==='paused'?'var(--amber-lt)':z.state==='active'?'var(--green-lt)':'#F3E5F5'};color:${z.state==='paused'?'var(--amber-dk)':z.state==='active'?'#1b5e20':'#6a1b9a'};">${z.state}</span></td>
+    <td style="font-size:11px;color:var(--txt2);font-style:italic;">${z.reason}</td>
+  </tr>`).join('');
+  // Counts
+  const completedCount=zombies.filter(z=>z.reason==='Item already completed').length;
+  const cTeamCount=zombies.filter(z=>z.reason==='C1-C4 or Testing already worked on this item').length;
+  result.style.display='block';
+  result.innerHTML=`
+    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
+      🧟 <strong>${zombies.length} zombie station(s) found:</strong>
+      <br>${completedCount>0?'• '+completedCount+' on already completed items':''}
+      ${cTeamCount>0?'<br>• '+cTeamCount+' where C1-C4 or Testing already started':''}
+    </div>
+    <table class="admin-table" style="margin-bottom:12px;">
+      <thead><tr><th style="width:100px;">SO</th><th>Item</th><th style="width:70px;">Qty</th><th style="width:80px;">Station</th><th style="width:80px;">State</th><th>Reason</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <button onclick="cleanZombies()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">✓ Mark All ${zombies.length} as Taken (Clean)</button>`;
+  window._zombiesPending=zombies.map(z=>z.stationId);
+}
+
+async function cleanZombies(){
+  const ids=window._zombiesPending||[];
+  if(!ids.length){showToast('Nothing to clean','red');return;}
+  if(!confirm('Mark '+ids.length+' zombie station(s) as taken?\nThey will disappear from active jobs but history is kept.\n\nXoa '+ids.length+' tram zombie? Lich su giu lai.'))return;
+  setSyncDot('syncing');
+  try{
+    let cleaned=0;
+    for(const sid of ids){
+      // For paused jobs, save the elapsed time so it does not get lost
+      const j=jobs.find(x=>x.stationId===sid);
+      const update={state:'taken'};
+      if(j&&j.state==='active'&&j.startedAt){
+        update.elapsed_ms=j.elapsed+(Date.now()-j.startedAt);
+      }
+      await sb.from('stations').update(update).eq('id',sid);
+      cleaned++;
+    }
+    await loadAll();
+    document.getElementById('zombieResult').style.display='none';
+    showToast('✅ Cleaned '+cleaned+' zombie station(s) / Da don '+cleaned+' tram','green');
+    window._zombiesPending=null;
+    renderAdmin();
+  }catch(err){
+    console.error('Zombie clean error:',err);
+    setSyncDot('error');
+    showToast('Error cleaning zombies / Loi','red');
+  }
 }
 
 async function cleanOldCompleted(){
