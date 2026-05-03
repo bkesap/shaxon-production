@@ -1798,13 +1798,15 @@ function renderDash(){
       const allSt=l.stations.filter(s=>!['taken'].includes(s.state));
       const flowHtml=allSt.length?allSt.map((s,idx)=>{
         let cls='fb-active';
-        if(s.state==='done')cls='fb-done';
-        else if(s.state==='paused')cls='fb-paused';
-        else if(s.state==='waiting')cls='fb-waiting';
-        else if(s.state==='queue')cls='fb-queue';
+        let labelSuffix='';
+        if(s.state==='done'){cls='fb-done';labelSuffix=' ✓';}
+        else if(s.state==='paused'){cls='fb-paused';labelSuffix=' ⏸';}
+        else if(s.state==='waiting'){cls='fb-waiting';labelSuffix=' ⏳';}
+        else if(s.state==='queue'){cls='fb-queue';labelSuffix=' → Queue';}
+        else if(s.state==='active'){cls='fb-active';labelSuffix=' ⚡';}
         const arrow=idx<allSt.length-1?'<span class="flow-arr">→</span>':'';
         const qtyInfo=s.sent_qty?` (${s.sent_qty})`:'';
-        return `<div class="flow-step"><span class="fb ${cls}"><span class="fb-dot"></span>${shortGrp(s.grp)}${qtyInfo}</span>${arrow}</div>`;
+        return `<div class="flow-step"><span class="fb ${cls}"><span class="fb-dot"></span>${shortGrp(s.grp)}${labelSuffix}${qtyInfo}</span>${arrow}</div>`;
       }).join(''):'<span style="font-size:12px;color:var(--txt3);">No activity</span>';
       const allNotes=l.stations.filter(s=>s.note).map(s=>`${shortGrp(s.grp)}: ${s.note}`);
       const notesHtml=allNotes.length?`<div class="dash-note" title="${allNotes.join(' | ')}">📝 ${allNotes.join(' · ')}</div>`:'';
