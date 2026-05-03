@@ -1596,18 +1596,16 @@ function renderDaily(){
   const TEAMS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
 
   const rows=TEAMS.map(team=>{
-    // All stations for this team
-    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team&&s.state!=='taken'));
-    // Today's stations (started today)
-    // Opened today = stations that were STARTED today (active/paused/done, not queue entries)
-    const todaySt=allSt.filter(s=>toLocalDate(s.started_at)===todayStr&&s.state!=='taken'&&s.state!=='queue');
-    const opened=todaySt.length;
-    // Sent = done today
+    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team));
+    // RECEIVED today = work the team STARTED today (active/paused/done/waiting started today, NOT queue records)
+    const received=allSt.filter(s=>
+      toLocalDate(s.started_at)===todayStr&&
+      (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
+    ).length;
+    // SENT today = work the team COMPLETED today (DONE pressed, then forwarded to queue)
     const sent=allSt.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
-    // Active/waiting now
-    const active=allSt.filter(s=>s.state==='active'||s.state==='paused'||s.state==='waiting').length;
-    // Queue waiting for this team (items in queue that came from this team)
-    const inQueue=queueItems.filter(qi=>qi.fromGroup===team).length;
+    // ACTIVE NOW = currently being worked on (active+paused only, NO waiting)
+    const active=allSt.filter(s=>s.state==='active'||s.state==='paused').length;
 
     const color=team==='Cutting'?'var(--blue)':team==='Part Pull'?'#7b1fa2':team==='Testing / Packing'?'var(--green)':'var(--blue-m)';
 
@@ -1615,33 +1613,38 @@ function renderDaily(){
       <div style="width:160px;font-size:15px;font-weight:600;color:var(--txt1);">${team}</div>
       <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
         <div style="text-align:center;padding:10px;background:var(--blue-lt);border-radius:var(--r-md);">
-          <div style="font-size:26px;font-weight:700;color:var(--blue);">${opened}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Opened Today</div>
+          <div style="font-size:26px;font-weight:700;color:var(--blue);">${received}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Received Today / Da nhan</div>
         </div>
         <div style="text-align:center;padding:10px;background:var(--green-lt);border-radius:var(--r-md);">
           <div style="font-size:26px;font-weight:700;color:var(--green);">${sent}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Sent Today</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Sent Today / Da gui</div>
         </div>
         <div style="text-align:center;padding:10px;background:var(--amber-lt);border-radius:var(--r-md);">
           <div style="font-size:26px;font-weight:700;color:var(--amber);">${active}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Active Now</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Active Now / Dang lam</div>
         </div>
       </div>
     </div>`;
   }).join('');
 
   // Summary totals
-  const totalOpened=lines.flatMap(l=>l.stations).filter(s=>s.state!=='taken'&&s.state!=='queue'&&toLocalDate(s.started_at)===todayStr).length;
-  const totalSent=lines.flatMap(l=>l.stations).filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
-  const totalActive=lines.flatMap(l=>l.stations).filter(s=>s.state==='active'||s.state==='paused').length;
-  const totalComplete=lines.filter(l=>l.fully_done).length;
+  const allStations=lines.flatMap(l=>l.stations);
+  const totalReceived=allStations.filter(s=>
+    toLocalDate(s.started_at)===todayStr&&
+    (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
+  ).length;
+  const totalSent=allStations.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+  const totalActive=allStations.filter(s=>s.state==='active'||s.state==='paused').length;
+  // PENDING = Queue + Waiting combined (work that is not actively being processed but is in the system)
+  const totalPending=allStations.filter(s=>s.state==='queue'||s.state==='waiting').length;
 
   body.innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
-      <div class="dash-stat"><div class="dash-stat-val">${totalOpened}</div><div class="dash-stat-lbl">Jobs Opened Today</div></div>
-      <div class="dash-stat"><div class="dash-stat-val">${totalSent}</div><div class="dash-stat-lbl">Jobs Sent Today</div></div>
-      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--amber);">${totalActive}</div><div class="dash-stat-lbl">Currently Active</div></div>
-      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--green);">${totalComplete}</div><div class="dash-stat-lbl">Orders Complete</div></div>
+      <div class="dash-stat"><div class="dash-stat-val">${totalReceived}</div><div class="dash-stat-lbl">Received Today / Da nhan hom nay</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--green);">${totalSent}</div><div class="dash-stat-lbl">Sent Today / Da gui hom nay</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--amber);">${totalActive}</div><div class="dash-stat-lbl">Active Now / Dang lam</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" style="color:#7b1fa2;">${totalPending}</div><div class="dash-stat-lbl">Pending (Queue+Waiting) / Dang cho</div></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">${rows}</div>`;
 }
