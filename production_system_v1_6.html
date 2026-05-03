@@ -485,7 +485,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <span class="panel-lbl">Active Jobs (<span id="activeCount">0</span>)</span>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="jobSearch" placeholder="Search..." oninput="renderWorker()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+          <input class="job-search" type="text" id="jobSearch" name="job_search_x" placeholder="Search..." oninput="renderWorker()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
       </div>
       <div class="jobs-grid" id="jobsList">
@@ -505,7 +505,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="completedSearch" placeholder="Search SO or item..." oninput="renderDonePanel()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+          <input class="job-search" type="text" id="completedSearch" name="completed_search_x" placeholder="Search SO or item..." oninput="renderDonePanel()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
       </div>
     </div>
@@ -522,7 +522,7 @@ body{font-family:var(--font);background:var(--bg2);}
       <h2>Queue — Waiting for Next Station / Hang cho tram tiep theo</h2>
       <div class="job-search-wrap">
         <span class="job-search-ico">🔍</span>
-        <input class="job-search" type="text" id="queueSearch" placeholder="Search SO or item..." oninput="renderQueue()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+        <input class="job-search" type="text" id="queueSearch" name="queue_search_x" placeholder="Search SO or item..." oninput="renderQueue()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       </div>
     </div>
     <div class="queue-body" id="queueBody">
@@ -536,7 +536,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="dash-inner">
     <div class="dash-top">
       <h2>Dashboard</h2>
-      <input type="text" class="dash-search" id="dashSearch" placeholder="🔍 Search SO or item..." oninput="renderDash()" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+      <input type="text" class="dash-search" id="dashSearch" name="dash_search_8898" placeholder="🔍 Search SO or item..." oninput="renderDash()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
       <select class="filter-sel" id="filterStatus" onchange="renderDash()">
         <option value="">All Status</option>
         <option>In Progress</option><option>Paused</option><option>Done</option><option>Not Started</option>
@@ -585,7 +585,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <h2>🔒 Admin Panel — Shaxon Production</h2>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="adminSearch" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+          <input class="job-search" type="text" id="adminSearch" name="admin_search_x" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
@@ -1372,6 +1372,16 @@ async function confirmTake(){
   const team=document.getElementById('takeTeamSel').value;
   if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
+  // Prevent same-team re-take: if this team already has an alive (non-taken) station for this line, block
+  const line=lines.find(l=>l.id===qi.lineId);
+  if(line){
+    const ALIVE_TAKE=['active','paused','waiting','done'];
+    const alreadyHere=line.stations.some(s=>s.grp===team&&ALIVE_TAKE.includes(s.state));
+    if(alreadyHere){
+      showToast('🚫 '+team+' already worked on this item / '+team+' da lam roi','red');
+      return;
+    }
+  }
   // Flow validation: C1-C4 can only take if both Cutting AND Part Pull are done
   const C_TEAMS=['C1','C2','C3','C4'];
   if(C_TEAMS.includes(team)){
@@ -2174,7 +2184,8 @@ function detectZombies(){
     const cOrTestingActivity=sts.some(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&['active','paused','waiting','done','taken'].includes(s.state));
     // Is the line marked complete?
     const isComplete=line.fully_done===true;
-    // Find stuck Cutting/Part Pull stations
+
+    // Type A: Stuck Cutting/Part Pull stations
     sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&ALIVE.includes(s.state)).forEach(s=>{
       let reason=null;
       if(isComplete){
@@ -2183,18 +2194,34 @@ function detectZombies(){
         reason='C1-C4 or Testing already worked on this item';
       }
       if(reason){
-        zombies.push({
-          stationId:s.id,
-          lineId:line.id,
-          so:line.so,
-          item:line.item,
-          qty:line.qty,
-          grp:s.grp,
-          state:s.state,
-          reason:reason
-        });
+        zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:reason});
       }
     });
+
+    // Type B: Same team duplicate (e.g. C4 done + C4 active again)
+    // For each team, if there is already a "done" station, any later ALIVE station from the same team is a zombie
+    const allTeams=['Cutting','Part Pull','C1','C2','C3','C4',FINAL_TEAM];
+    for(const team of allTeams){
+      const teamStations=sts.filter(s=>s.grp===team);
+      const hasDone=teamStations.some(s=>s.state==='done');
+      if(hasDone){
+        teamStations.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
+          // Skip if already added from Type A
+          if(!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:team+' already finished this item once'});
+          }
+        });
+      }
+    }
+
+    // Type C: Item is fully_done but C-teams or Testing still alive (not just Cutting/PP)
+    if(isComplete){
+      sts.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
+        if(!zombies.some(z=>z.stationId===s.id)){
+          zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Item already completed'});
+        }
+      });
+    }
   }
   return zombies;
 }
