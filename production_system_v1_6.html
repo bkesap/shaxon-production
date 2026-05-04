@@ -335,6 +335,14 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-del:active{opacity:.8;}
 .admin-empty{padding:20px;text-align:center;color:var(--txt3);font-size:13px;}
 
+/* CHAT — show delete button on hover/touch */
+.msg-bubble:hover .msg-del-btn{opacity:1!important;}
+.msg-bubble .msg-del-btn:active{opacity:1!important;background:rgba(0,0,0,.75)!important;}
+@media (hover:none){
+  /* On touch devices: always show delete button */
+  .msg-bubble .msg-del-btn{opacity:.85!important;}
+}
+
 /* MODALS */
 .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
@@ -2891,19 +2899,25 @@ function renderChatMessages(){
     const time=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
     const escContent=(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const escFrom=(m.from_device||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const imgHtml=m.image_url?`<img src="${m.image_url}" onclick="openImageViewer('${m.image_url}')" style="max-width:100%;max-height:300px;border-radius:8px;display:block;margin:${escContent?'0 0 4px':'0'};cursor:pointer;" loading="lazy"/>`:'';
-    const textHtml=escContent?`<div style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}</div>`:'';
+    const isDeleted=!!m.deleted_at;
+    const imgHtml=(!isDeleted&&m.image_url)?`<img src="${m.image_url}" onclick="openImageViewer('${m.image_url}')" style="max-width:100%;max-height:300px;border-radius:8px;display:block;margin:${escContent?'0 0 4px':'0'};cursor:pointer;" loading="lazy"/>`:'';
+    const textHtml=isDeleted
+      ?`<div style="font-size:13px;font-style:italic;opacity:.65;line-height:1.4;">🚫 This message was deleted / Tin nhan da bi xoa</div>`
+      :(escContent?`<div style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}</div>`:'');
+    // Delete button — only on own messages, only if not already deleted
+    const delBtn=(isMe&&!isDeleted)?`<button onclick="deleteChatMessage('${m.id}')" title="Delete" style="position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;" class="msg-del-btn">🗑</button>`:'';
     if(isMe){
-      return `${dateSep}<div style="align-self:flex-end;max-width:70%;background:var(--blue);color:#fff;padding:6px 8px;border-radius:16px 16px 4px 16px;">
+      return `${dateSep}<div class="msg-bubble" style="align-self:flex-end;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--blue)'};color:${isDeleted?'var(--txt2)':'#fff'};padding:6px 8px;border-radius:16px 16px 4px 16px;position:relative;${isDeleted?'border:1px dashed var(--bdr2);':''}">
         ${imgHtml}
         ${textHtml}
         <div style="font-size:10px;opacity:.75;text-align:right;margin-top:3px;padding:0 4px;">${time}</div>
+        ${delBtn}
       </div>`;
     } else {
-      return `${dateSep}<div style="align-self:flex-start;max-width:70%;background:var(--bg1);border:1px solid var(--bdr3);padding:6px 8px;border-radius:16px 16px 16px 4px;">
-        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:2px;padding:0 4px;">${escFrom}</div>
+      return `${dateSep}<div class="msg-bubble" style="align-self:flex-start;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--bg1)'};border:1px ${isDeleted?'dashed':'solid'} var(--bdr3);padding:6px 8px;border-radius:16px 16px 16px 4px;position:relative;">
+        <div style="font-size:11px;font-weight:600;color:${isDeleted?'var(--txt3)':'var(--blue)'};margin-bottom:2px;padding:0 4px;">${escFrom}</div>
         ${imgHtml}
-        ${textHtml.replace('color:var(--txt1)','color:var(--txt1)')}
+        ${textHtml}
         <div style="font-size:10px;color:var(--txt3);text-align:right;margin-top:3px;padding:0 4px;">${time}</div>
       </div>`;
     }
@@ -3002,6 +3016,41 @@ function openImageViewer(url){
   document.body.appendChild(overlay);
 }
 
+async function deleteChatMessage(msgId){
+  const msg=chatMessages.find(m=>m.id===msgId);
+  if(!msg){showToast('Message not found','red');return;}
+  // Hard rule: only the device with the same name can delete its own messages
+  if(msg.from_device!==deviceName){
+    showToast('You can only delete your own messages','red');
+    return;
+  }
+  if(msg.deleted_at){return;}
+  if(!confirm('Delete this message?\n\nXoa tin nhan nay?'))return;
+  try{
+    // If image, also remove from storage to save space
+    if(msg.image_url){
+      try{
+        // Extract filename from public URL
+        const m=msg.image_url.match(/\/chat-images\/([^?]+)/);
+        if(m&&m[1]){
+          await sb.storage.from('chat-images').remove([decodeURIComponent(m[1])]);
+        }
+      }catch(e){console.warn('Image delete failed (continuing):',e);}
+    }
+    // Soft delete: set deleted_at, clear content + image_url
+    const {error}=await sb.from('messages').update({
+      deleted_at:new Date().toISOString(),
+      content:'',
+      image_url:null
+    }).eq('id',msgId).eq('from_device',deviceName); // double-check from_device server-side too
+    if(error)throw error;
+    showToast('Message deleted','green');
+  }catch(err){
+    console.error('Delete error:',err);
+    showToast('Delete failed','red');
+  }
+}
+
 function isOnChatPage(){
   const p=document.getElementById('page-chat');
   return p&&p.classList.contains('active');
@@ -3064,6 +3113,16 @@ function setupChatRealtime(){
       // If on chat page, mark as seen
       if(isOnChatPage()){
         markChatAsSeen();
+      }
+    })
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages'},(payload)=>{
+      // Sync deletes/edits across devices
+      const updated=payload.new;
+      if(!updated)return;
+      const idx=chatMessages.findIndex(m=>m.id===updated.id);
+      if(idx>=0){
+        chatMessages[idx]=updated;
+        renderChatMessages();
       }
     })
     .subscribe();
