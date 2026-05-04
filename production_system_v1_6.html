@@ -335,13 +335,8 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-del:active{opacity:.8;}
 .admin-empty{padding:20px;text-align:center;color:var(--txt3);font-size:13px;}
 
-/* CHAT — show delete button on hover/touch */
-.msg-bubble:hover .msg-del-btn{opacity:1!important;}
-.msg-bubble .msg-del-btn:active{opacity:1!important;background:rgba(0,0,0,.75)!important;}
-@media (hover:none){
-  /* On touch devices: always show delete button */
-  .msg-bubble .msg-del-btn{opacity:.85!important;}
-}
+/* CHAT - delete button always visible, slight emphasis on press */
+.msg-bubble .msg-del-btn:active{background:rgba(255,255,255,.35)!important;transform:scale(.92);}
 
 /* MODALS */
 .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center;}
@@ -2905,13 +2900,15 @@ function renderChatMessages(){
       ?`<div style="font-size:13px;font-style:italic;opacity:.65;line-height:1.4;">🚫 This message was deleted / Tin nhan da bi xoa</div>`
       :(escContent?`<div style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}</div>`:'');
     // Delete button — only on own messages, only if not already deleted
-    const delBtn=(isMe&&!isDeleted)?`<button onclick="deleteChatMessage('${m.id}')" title="Delete" style="position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;" class="msg-del-btn">🗑</button>`:'';
+    const delBtn=(isMe&&!isDeleted)?`<button onclick="deleteChatMessage('${m.id}')" title="Delete" class="msg-del-btn" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;font-size:14px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">🗑</button>`:'';
     if(isMe){
-      return `${dateSep}<div class="msg-bubble" style="align-self:flex-end;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--blue)'};color:${isDeleted?'var(--txt2)':'#fff'};padding:6px 8px;border-radius:16px 16px 4px 16px;position:relative;${isDeleted?'border:1px dashed var(--bdr2);':''}">
+      return `${dateSep}<div class="msg-bubble" style="align-self:flex-end;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--blue)'};color:${isDeleted?'var(--txt2)':'#fff'};padding:6px 8px;border-radius:16px 16px 4px 16px;${isDeleted?'border:1px dashed var(--bdr2);':''}">
         ${imgHtml}
         ${textHtml}
-        <div style="font-size:10px;opacity:.75;text-align:right;margin-top:3px;padding:0 4px;">${time}</div>
-        ${delBtn}
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:3px;padding:0 4px;">
+          <span style="font-size:10px;opacity:.75;">${time}</span>
+          ${delBtn}
+        </div>
       </div>`;
     } else {
       return `${dateSep}<div class="msg-bubble" style="align-self:flex-start;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--bg1)'};border:1px ${isDeleted?'dashed':'solid'} var(--bdr3);padding:6px 8px;border-radius:16px 16px 16px 4px;position:relative;">
