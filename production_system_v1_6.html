@@ -2898,7 +2898,7 @@ function renderChatMessages(){
     const imgHtml=(!isDeleted&&m.image_url)?`<img src="${m.image_url}" onclick="openImageViewer('${m.image_url}')" style="max-width:100%;max-height:300px;border-radius:8px;display:block;margin:${escContent?'0 0 4px':'0'};cursor:pointer;" loading="lazy"/>`:'';
     const textHtml=isDeleted
       ?`<div style="font-size:13px;font-style:italic;opacity:.65;line-height:1.4;">🚫 This message was deleted / Tin nhan da bi xoa</div>`
-      :(escContent?`<div style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}</div>`:'');
+      :(escContent?`<div data-translate-id="${m.id}" style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}<div data-translate-target="${m.id}" style="display:none;font-size:12px;font-style:italic;${isMe?'opacity:.78;border-top:1px solid rgba(255,255,255,.25);':'color:var(--txt2);border-top:1px solid var(--bdr3);'}margin-top:4px;padding-top:3px;line-height:1.35;"></div></div>`:'');
     // Delete button — only on own messages, only if not already deleted
     const delBtn=(isMe&&!isDeleted)?`<button onclick="deleteChatMessage('${m.id}')" title="Delete" class="msg-del-btn" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;font-size:14px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">🗑</button>`:'';
     if(isMe){
@@ -2922,6 +2922,65 @@ function renderChatMessages(){
   box.innerHTML=html;
   // Scroll to bottom
   setTimeout(()=>{box.scrollTop=box.scrollHeight;},50);
+  // Trigger translations (async, non-blocking)
+  translateVisibleMessages();
+}
+
+// ── TRANSLATION (MyMemory free API) ─────────────────────────────────────────
+const _translateCache=new Map();
+
+function detectLang(text){
+  if(!text||!text.trim())return null;
+  // Vietnamca'ya ozel karakterler — varsa Vietnamca
+  if(/[ăâđêôơưĂÂĐÊÔƠƯạảấầẩẫậắằẳẵặẹẻẽếềểễệỉĩịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹàáâãèéêìíòóôõùúýÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝ]/.test(text))return 'vi';
+  // Aksi halde Latin karakterler agirlikla — Ingilizce kabul et
+  return 'en';
+}
+
+async function translateText(text,from,to){
+  if(!text||!text.trim())return null;
+  const key=from+'|'+to+'|'+text;
+  if(_translateCache.has(key))return _translateCache.get(key);
+  try{
+    const url='https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+from+'|'+to;
+    const res=await fetch(url);
+    if(!res.ok)throw new Error('API error');
+    const data=await res.json();
+    const translated=data&&data.responseData&&data.responseData.translatedText;
+    if(translated&&translated.toLowerCase()!==text.toLowerCase()){
+      _translateCache.set(key,translated);
+      return translated;
+    }
+    return null;
+  }catch(err){
+    console.warn('Translate failed:',err);
+    return null;
+  }
+}
+
+async function autoTranslate(text){
+  const lang=detectLang(text);
+  if(!lang)return null;
+  const target=lang==='vi'?'en':'vi';
+  return await translateText(text,lang,target);
+}
+
+// Translate visible messages — call after rendering
+async function translateVisibleMessages(){
+  const msgs=chatMessages.filter(m=>!m.deleted_at&&m.content&&m.content.trim());
+  for(const m of msgs){
+    const el=document.querySelector('[data-translate-id="'+m.id+'"]');
+    if(!el||el.dataset.done==='1')continue;
+    el.dataset.done='1';
+    const tr=await autoTranslate(m.content);
+    if(tr){
+      const target=document.querySelector('[data-translate-target="'+m.id+'"]');
+      if(target){
+        target.textContent='🌐 '+tr;
+        target.style.display='block';
+      }
+    }
+  }
 }
 
 async function sendChatMessage(){
