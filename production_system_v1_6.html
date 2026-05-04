@@ -409,6 +409,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="nav-tab" id="completedTab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);cursor:pointer;"></span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
   <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
+  <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
 </div>
 
@@ -564,6 +565,27 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
     <div style="flex:1;overflow-y:auto;padding:14px 16px;" id="dailyBody">
       <div class="empty-dash">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CHAT ══ -->
+<div class="page" id="page-chat">
+  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
+    <div class="panel-hdr" style="padding:10px 16px;background:var(--bg1);">
+      <span class="panel-lbl">💬 Team Chat — General / Tro chuyen chung</span>
+      <span style="margin-left:12px;font-size:12px;color:var(--txt3);">From: <strong id="chatDeviceName" style="color:var(--blue);">--</strong></span>
+      <button onclick="changeDeviceName()" style="margin-left:auto;padding:4px 10px;font-size:11px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:6px;cursor:pointer;">Change name / Doi ten</button>
+    </div>
+    <div id="chatMessages" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:6px;">
+      <div style="text-align:center;color:var(--txt3);font-size:13px;padding:20px;">Loading messages...</div>
+    </div>
+    <div style="display:flex;gap:8px;padding:10px 12px;background:var(--bg1);border-top:1px solid var(--bdr3);">
+      <input type="text" id="chatInput" placeholder="Type a message... / Nhap tin nhan..." 
+        style="flex:1;padding:10px 14px;font-size:15px;border:1px solid var(--bdr2);border-radius:20px;background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);"
+        autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other"
+        onkeydown="if(event.key==='Enter')sendChatMessage()"/>
+      <button onclick="sendChatMessage()" style="padding:10px 22px;background:var(--blue);color:#fff;border:none;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;">Send</button>
     </div>
   </div>
 </div>
@@ -748,6 +770,27 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
 </div>
 
+<!-- DEVICE NAME MODAL -->
+<div class="modal-overlay" id="deviceNameModal">
+  <div class="modal-box">
+    <div class="modal-hdr blue">
+      <div class="modal-title">📱 Device Name / Ten thiet bi</div>
+      <div class="modal-sub">First-time setup / Cai dat lan dau</div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-msg">Please name this device so others can see who is sending messages.<br><span style="font-style:italic;color:var(--txt2);font-size:13px;">Ten thiet bi nay de moi nguoi biet ai gui tin nhan.</span></div>
+      <input type="text" id="deviceNameInput" placeholder="e.g. Cutting Tablet, Office PC" 
+        style="width:100%;padding:11px 14px;font-size:16px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);outline:none;"
+        autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other"
+        onkeydown="if(event.key==='Enter')saveDeviceName()"/>
+      <div style="font-size:12px;color:var(--txt3);">Examples: Cutting Tablet, C1 Tablet, Office PC, Manager Phone</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ok" onclick="saveDeviceName()">Save / Luu</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -806,6 +849,12 @@ function showPage(p,el){
   if(p==='admin')renderAdmin();
   if(p==='completed')renderDonePanel();
   if(p==='daily')renderDaily();
+  if(p==='chat'){
+    if(!deviceName)ensureDeviceName();
+    renderChatMessages();
+    markChatAsSeen();
+    setTimeout(()=>{const inp=document.getElementById('chatInput');if(inp)inp.focus();},100);
+  }
 }
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
@@ -2760,6 +2809,184 @@ function tick(){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+// ── CHAT SYSTEM ─────────────────────────────────────────────────────────────
+let deviceName='';
+let chatMessages=[];
+let chatLastSeenAt=null;
+let chatChannel=null;
+
+function loadDeviceName(){
+  try{deviceName=localStorage.getItem('shaxon_device_name')||'';}catch(e){deviceName='';}
+  return deviceName;
+}
+
+function saveDeviceName(){
+  const v=(document.getElementById('deviceNameInput').value||'').trim();
+  if(!v){showToast('Enter a name / Nhap ten','red');return;}
+  if(v.length>40){showToast('Name too long (max 40)','red');return;}
+  deviceName=v;
+  try{localStorage.setItem('shaxon_device_name',v);}catch(e){}
+  closeModal('deviceNameModal');
+  const el=document.getElementById('chatDeviceName');
+  if(el)el.textContent=v;
+  showToast('Device name saved: '+v,'green');
+}
+
+function changeDeviceName(){
+  document.getElementById('deviceNameInput').value=deviceName||'';
+  document.getElementById('deviceNameModal').classList.add('open');
+  setTimeout(()=>document.getElementById('deviceNameInput').focus(),100);
+}
+
+function ensureDeviceName(){
+  if(!deviceName){
+    document.getElementById('deviceNameInput').value='';
+    document.getElementById('deviceNameModal').classList.add('open');
+    setTimeout(()=>document.getElementById('deviceNameInput').focus(),200);
+  } else {
+    const el=document.getElementById('chatDeviceName');
+    if(el)el.textContent=deviceName;
+  }
+}
+
+async function loadChatMessages(){
+  try{
+    // Last 30 days only
+    const cutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
+    const {data,error}=await sb.from('messages').select('*').gte('created_at',cutoff).order('created_at',{ascending:true});
+    if(error)throw error;
+    chatMessages=data||[];
+    renderChatMessages();
+    updateChatBadge();
+  }catch(err){console.error('Chat load error:',err);}
+}
+
+function renderChatMessages(){
+  const box=document.getElementById('chatMessages');
+  if(!box)return;
+  if(!chatMessages.length){
+    box.innerHTML='<div style="text-align:center;color:var(--txt3);font-size:13px;padding:30px;">No messages yet<br>Chua co tin nhan</div>';
+    return;
+  }
+  let lastDate=null;
+  const html=chatMessages.map(m=>{
+    const isMe=m.from_device===deviceName;
+    const t=new Date(m.created_at);
+    const today=new Date();
+    const sameDay=t.toDateString()===today.toDateString();
+    const yesterday=new Date(today);yesterday.setDate(yesterday.getDate()-1);
+    const isYesterday=t.toDateString()===yesterday.toDateString();
+    let dateLabel;
+    if(sameDay)dateLabel='Today';
+    else if(isYesterday)dateLabel='Yesterday';
+    else dateLabel=t.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const dateKey=t.toDateString();
+    let dateSep='';
+    if(dateKey!==lastDate){
+      dateSep=`<div style="text-align:center;font-size:11px;color:var(--txt3);background:var(--bg3);padding:3px 10px;border-radius:10px;margin:8px auto;align-self:center;">${dateLabel}</div>`;
+      lastDate=dateKey;
+    }
+    const time=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+    const escContent=(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const escFrom=(m.from_device||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if(isMe){
+      return `${dateSep}<div style="align-self:flex-end;max-width:70%;background:var(--blue);color:#fff;padding:8px 12px;border-radius:16px 16px 4px 16px;">
+        <div style="font-size:14px;line-height:1.4;word-wrap:break-word;">${escContent}</div>
+        <div style="font-size:10px;opacity:.75;text-align:right;margin-top:3px;">${time}</div>
+      </div>`;
+    } else {
+      return `${dateSep}<div style="align-self:flex-start;max-width:70%;background:var(--bg1);border:1px solid var(--bdr3);padding:8px 12px;border-radius:16px 16px 16px 4px;">
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:2px;">${escFrom}</div>
+        <div style="font-size:14px;line-height:1.4;color:var(--txt1);word-wrap:break-word;">${escContent}</div>
+        <div style="font-size:10px;color:var(--txt3);text-align:right;margin-top:3px;">${time}</div>
+      </div>`;
+    }
+  }).join('');
+  box.innerHTML=html;
+  // Scroll to bottom
+  setTimeout(()=>{box.scrollTop=box.scrollHeight;},50);
+}
+
+async function sendChatMessage(){
+  if(!deviceName){ensureDeviceName();return;}
+  const inp=document.getElementById('chatInput');
+  const text=(inp.value||'').trim();
+  if(!text)return;
+  if(text.length>500){showToast('Message too long (max 500)','red');return;}
+  inp.value='';
+  try{
+    const {error}=await sb.from('messages').insert({from_device:deviceName,content:text});
+    if(error)throw error;
+  }catch(err){console.error('Send error:',err);showToast('Send failed','red');}
+}
+
+function isOnChatPage(){
+  const p=document.getElementById('page-chat');
+  return p&&p.classList.contains('active');
+}
+
+function updateChatBadge(){
+  const badge=document.getElementById('chatBadge');
+  if(!badge)return;
+  const lastSeen=parseInt(localStorage.getItem('shaxon_chat_last_seen')||'0');
+  const unread=chatMessages.filter(m=>m.from_device!==deviceName&&new Date(m.created_at).getTime()>lastSeen).length;
+  if(unread>0&&!isOnChatPage()){
+    badge.textContent=unread>99?'99+':unread;
+    badge.classList.add('on');
+  } else {
+    badge.classList.remove('on');
+  }
+}
+
+function markChatAsSeen(){
+  try{localStorage.setItem('shaxon_chat_last_seen',Date.now().toString());}catch(e){}
+  updateChatBadge();
+}
+
+function playChatSound(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.type='sine';osc.frequency.value=880;
+    gain.gain.setValueAtTime(0,ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15,ctx.currentTime+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.25);
+    osc.start();osc.stop(ctx.currentTime+0.25);
+  }catch(e){}
+}
+
+function setupChatRealtime(){
+  if(chatChannel){try{sb.removeChannel(chatChannel);}catch(e){}}
+  chatChannel=sb.channel('shaxon-chat-v1')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async(payload)=>{
+      const msg=payload.new;
+      if(!msg)return;
+      // Add to local list if not already there
+      if(!chatMessages.some(m=>m.id===msg.id)){
+        chatMessages.push(msg);
+        // Keep only last 30 days in memory
+        const cutoff=Date.now()-30*24*60*60*1000;
+        chatMessages=chatMessages.filter(m=>new Date(m.created_at).getTime()>cutoff);
+        renderChatMessages();
+      }
+      // Update badge if not from me and not on chat page
+      if(msg.from_device!==deviceName){
+        updateChatBadge();
+        // Play sound if not on chat page
+        if(!isOnChatPage()){
+          playChatSound();
+        }
+      }
+      // If on chat page, mark as seen
+      if(isOnChatPage()){
+        markChatAsSeen();
+      }
+    })
+    .subscribe();
+}
+
 async function init(){
   loadShiftSettings();
   updateClock();
@@ -2767,8 +2994,13 @@ async function init(){
   await loadAll();
   setupRealtime();
   checkRememberedAdmin();
+  loadDeviceName();
+  await loadChatMessages();
+  setupChatRealtime();
   document.getElementById('connOverlay').classList.add('hidden');
   setInterval(tick,1000);
+  // Ask for device name after a short delay if not set
+  if(!deviceName)setTimeout(ensureDeviceName,800);
 }
 
 document.addEventListener('DOMContentLoaded',function(){
