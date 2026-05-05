@@ -1426,13 +1426,22 @@ async function confirmTake(){
   const team=document.getElementById('takeTeamSel').value;
   if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
-  // Prevent same-team re-take: if this team already has an alive (non-taken) station for this line, block
+  // Smart re-take check: allow partial flow but block true duplicates
   const line=lines.find(l=>l.id===qi.lineId);
   if(line){
-    const ALIVE_TAKE=['active','paused','waiting','done'];
-    const alreadyHere=line.stations.some(s=>s.grp===team&&ALIVE_TAKE.includes(s.state));
-    if(alreadyHere){
-      showToast('🚫 '+team+' already worked on this item / '+team+' da lam roi','red');
+    // Block if currently active/paused on this team
+    const activeOnTeam=line.stations.some(s=>s.grp===team&&(s.state==='active'||s.state==='paused'));
+    if(activeOnTeam){
+      showToast('🚫 '+team+' is already working on this item / '+team+' dang lam','red');
+      return;
+    }
+    // Quantity-based check: total work done + waiting + new should not exceed line qty
+    const totalQty=parseInt(line.qty)||0;
+    const doneTotal=line.stations.filter(s=>s.grp===team&&s.state==='done').reduce((a,s)=>a+(parseInt(s.sent_qty)||0),0);
+    const waitingTotal=line.stations.filter(s=>s.grp===team&&s.state==='waiting').reduce((a,s)=>a+((parseInt(s.received_qty)||0)-(parseInt(s.sent_qty)||0)),0);
+    const newQty=parseInt(qi.qty)||0;
+    if(totalQty>0&&(doneTotal+waitingTotal+newQty)>totalQty){
+      showToast('🚫 '+team+' already completed this item ('+doneTotal+'/'+totalQty+' pcs) / Da hoan thanh','red');
       return;
     }
   }
@@ -1450,15 +1459,32 @@ async function confirmTake(){
   setSyncDot('syncing');
   try{
     await sb.from('stations').update({state:'taken'}).eq('id',takeTargetId);
-    await sb.from('stations').insert({
-      line_id:qi.lineId,grp:team,
-      state:'active',started_at:new Date().toISOString(),
-      elapsed_ms:0,done_at:null,note:null,
-      sent_qty:0,remaining_qty:qi.qty,
-      received_qty:qi.qty,
-      is_partial:qi.qty<qi.totalQty,
-      from_grp:qi.fromGroup
-    });
+    // If a waiting station already exists for this team, merge into it instead of creating new
+    const lineForMerge=lines.find(l=>l.id===qi.lineId);
+    const existingWaiting=lineForMerge&&lineForMerge.stations.find(s=>s.grp===team&&s.state==='waiting');
+    if(existingWaiting){
+      // Add the new qty to the existing waiting station, switch to active
+      const newReceived=(parseInt(existingWaiting.received_qty)||0)+qi.qty;
+      const oldRemaining=parseInt(existingWaiting.remaining_qty)||0;
+      const newRemaining=oldRemaining+qi.qty;
+      await sb.from('stations').update({
+        state:'active',
+        started_at:new Date().toISOString(),
+        received_qty:newReceived,
+        remaining_qty:newRemaining,
+        is_partial:newReceived<qi.totalQty
+      }).eq('id',existingWaiting.id);
+    } else {
+      await sb.from('stations').insert({
+        line_id:qi.lineId,grp:team,
+        state:'active',started_at:new Date().toISOString(),
+        elapsed_ms:0,done_at:null,note:null,
+        sent_qty:0,remaining_qty:qi.qty,
+        received_qty:qi.qty,
+        is_partial:qi.qty<qi.totalQty,
+        from_grp:qi.fromGroup
+      });
+    }
     await loadAll();
     showToast(team+' picked up: '+qi.so+' / '+qi.item);
     takeTargetId=null;
