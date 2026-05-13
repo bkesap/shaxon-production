@@ -1220,6 +1220,12 @@ async function pauseJob(sid){
   catch(e){setSyncDot('error');showToast('Error','red');}
 }
 async function resumeJob(sid){
+  // Guard: do not resume a station that was already done
+  const j=jobs.find(x=>x.stationId===sid);
+  if(j&&j.state==='done'){
+    showToast('Cannot resume a completed station','red');
+    return;
+  }
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',sid);await loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
@@ -2078,6 +2084,19 @@ function renderAdmin(){
       </div>
     </div>
     <div class="admin-section">
+      <div class="admin-section-hdr">🔍 Data Consistency Check / Kiem tra du lieu</div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+          Finds lines where data state is contradictory:
+          <br>• <strong>fully_done=true</strong> but Test/Pack is still <strong>paused/active/waiting</strong>
+          <br>• Stations with both <strong>state=paused/active</strong> AND <strong>done_at</strong> set
+          <br>Lists for manual review. You decide: mark complete or reopen.
+        </div>
+        <button onclick="findInconsistencies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔍 Find Inconsistencies</button>
+        <div id="inconsistencyResult" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="admin-section">
       <div class="admin-section-hdr">🧹 Clean Old Completed Orders</div>
       <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
         <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
@@ -2295,9 +2314,13 @@ function detectZombies(){
     }
 
     // Type C: Item is fully_done but stations still alive
+    // EXCEPT: if it's Test/Pack and has done_at (was previously completed), this is a known
+    // pause/resume edge case — handled separately by the consistency tool, not as zombie.
     if(isComplete){
       sts.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
         if(!zombies.some(z=>z.stationId===s.id)){
+          // Skip Test/Pack with done_at — that's a separate consistency issue, not a zombie
+          if(s.grp===FINAL_TEAM&&s.done_at)return;
           zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Item already completed'});
         }
       });
@@ -2392,6 +2415,122 @@ async function cleanZombies(){
     console.error('Zombie clean error:',err);
     setSyncDot('error');
     showToast('Error cleaning zombies / Loi','red');
+  }
+}
+
+// ── DATA CONSISTENCY CHECK ──────────────────────────────────────────────────
+function detectInconsistencies(){
+  const FINAL='Testing / Packing';
+  const ALIVE=['active','paused','waiting'];
+  const issues=[];
+  for(const line of lines){
+    const sts=line.stations||[];
+    // Issue 1: fully_done=true but Test/Pack alive
+    if(line.fully_done){
+      const aliveTP=sts.filter(s=>s.grp===FINAL&&ALIVE.includes(s.state));
+      aliveTP.forEach(s=>{
+        issues.push({
+          type:'fully_done_but_alive',
+          stationId:s.id,lineId:line.id,
+          so:line.so,item:line.item,qty:line.qty,
+          grp:s.grp,state:s.state,
+          done_at:s.done_at,sent:s.sent_qty,
+          fully_done:line.fully_done,
+          description:'Line marked complete but '+s.grp+' is still '+s.state
+        });
+      });
+    }
+    // Issue 2: ALIVE state but done_at is set (resumed done station)
+    sts.forEach(s=>{
+      if(ALIVE.includes(s.state)&&s.done_at){
+        // Skip if already added from Issue 1
+        if(issues.some(i=>i.stationId===s.id))return;
+        issues.push({
+          type:'alive_but_done_at_set',
+          stationId:s.id,lineId:line.id,
+          so:line.so,item:line.item,qty:line.qty,
+          grp:s.grp,state:s.state,
+          done_at:s.done_at,sent:s.sent_qty,
+          fully_done:line.fully_done,
+          description:s.grp+' is '+s.state+' but has done_at='+s.done_at
+        });
+      }
+    });
+  }
+  return issues;
+}
+
+function findInconsistencies(){
+  const result=document.getElementById('inconsistencyResult');
+  const issues=detectInconsistencies();
+  if(!issues.length){
+    result.style.display='block';
+    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No data inconsistencies found.</div>`;
+    return;
+  }
+  const rows=issues.map((iss,idx)=>`<tr>
+    <td style="font-weight:600;color:var(--blue);">${iss.so}</td>
+    <td class="item-num" title="${iss.item}">${iss.item}</td>
+    <td>${iss.qty}</td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--amber-lt);color:var(--amber-dk);">${iss.grp}</span></td>
+    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--bg2);color:var(--txt2);">${iss.state}</span></td>
+    <td style="font-size:11px;color:var(--txt2);">${iss.description}</td>
+    <td style="display:flex;gap:4px;flex-wrap:wrap;">
+      <button onclick="fixInconsistency(${idx},'complete')" style="padding:4px 8px;font-size:11px;background:var(--green-lt);color:#1b5e20;border:1px solid var(--green-bdr);border-radius:5px;cursor:pointer;" title="Mark as completed">✓ Done</button>
+      <button onclick="fixInconsistency(${idx},'reopen')" style="padding:4px 8px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid var(--amber);border-radius:5px;cursor:pointer;" title="Reopen (clear done_at, fully_done=false)">↻ Reopen</button>
+    </td>
+  </tr>`).join('');
+  result.style.display='block';
+  result.innerHTML=`
+    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
+      🔍 <strong>${issues.length} inconsistency/inconsistencies found.</strong>
+      <br>For each: <strong>✓ Done</strong> = the work IS finished (mark station as done) ·
+      <strong>↻ Reopen</strong> = the work continues (clear done_at, fully_done=false)
+    </div>
+    <table class="admin-table" style="margin-bottom:8px;">
+      <thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Station</th><th>State</th><th>Issue</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  window._inconsistenciesPending=issues;
+}
+
+async function fixInconsistency(idx,action){
+  const issues=window._inconsistenciesPending||[];
+  const iss=issues[idx];
+  if(!iss){showToast('Issue not found','red');return;}
+  const label=action==='complete'?'mark this station as DONE':'reopen this work (clear done_at)';
+  if(!confirm('Will '+label+'.\n\nSO: '+iss.so+'\nItem: '+iss.item+'\nStation: '+iss.grp+'\n\nProceed?'))return;
+  setSyncDot('syncing');
+  try{
+    if(action==='complete'){
+      // Mark station as done, keep done_at, set fully_done=true if it's Test/Pack
+      const j=jobs.find(x=>x.stationId===iss.stationId);
+      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
+      await sb.from('stations').update({
+        state:'done',
+        elapsed_ms:elapsed,
+        done_at:iss.done_at||nowStr()
+      }).eq('id',iss.stationId);
+      // If Test/Pack, ensure line is fully_done
+      if(iss.grp==='Testing / Packing'){
+        await sb.from('lines').update({fully_done:true}).eq('id',iss.lineId);
+      }
+      showToast('Marked as done','green');
+    } else if(action==='reopen'){
+      // Clear done_at, ensure state is paused (so worker can resume), set fully_done=false
+      await sb.from('stations').update({
+        done_at:null,
+        state:iss.state==='active'?'active':'paused'
+      }).eq('id',iss.stationId);
+      await sb.from('lines').update({fully_done:false}).eq('id',iss.lineId);
+      showToast('Reopened — done_at cleared','green');
+    }
+    await loadAll();
+    findInconsistencies(); // refresh list
+  }catch(err){
+    console.error('Fix error:',err);
+    setSyncDot('error');
+    showToast('Fix failed','red');
   }
 }
 
