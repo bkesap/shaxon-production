@@ -614,6 +614,7 @@ body{font-family:var(--font);background:var(--bg2);}
           <span class="job-search-ico">🔍</span>
           <input class="job-search" type="text" id="adminSearch" name="admin_search_x" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
         </div>
+        <button class="admin-logout" style="background:var(--green);border-color:var(--green-bdr);color:#fff;" onclick="exportNotesCSV()" title="Download CSV of all active jobs with notes">📋 Export Notes</button>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -1726,6 +1727,12 @@ function renderDaily(){
 
   const TEAMS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
 
+  // Bug fix: done_at is stored as "8:12 AM" (time string, no date) so we can't filter by it.
+  // Sent Today = queue entries created today, attributed via from_grp (which team sent them).
+  // For Cutting/Part Pull queue entries the from_grp can be "Cutting", "Part Pull" or "Cutting+Part Pull"
+  // — we count it for both teams when it's the combined case.
+  const allQueues=lines.flatMap(l=>l.stations.filter(s=>s.state==='queue'));
+  const queuesToday=allQueues.filter(s=>toLocalDate(s.started_at)===todayStr);
   const rows=TEAMS.map(team=>{
     const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team));
     // RECEIVED today = work the team STARTED today (active/paused/done/waiting started today, NOT queue records)
@@ -1733,8 +1740,14 @@ function renderDaily(){
       toLocalDate(s.started_at)===todayStr&&
       (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
     ).length;
-    // SENT today = work the team COMPLETED today (DONE pressed, then forwarded to queue)
-    const sent=allSt.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+    // SENT today = queue entries today whose from_grp matches this team (handles "Cutting+Part Pull" combined case)
+    const sent=queuesToday.filter(q=>{
+      const fg=q.from_grp||'';
+      if(team==='Cutting'||team==='Part Pull'){
+        return fg===team||fg==='Cutting+Part Pull';
+      }
+      return fg===team;
+    }).length;
     // ACTIVE NOW = currently being worked on (active+paused only, NO waiting)
     const active=allSt.filter(s=>s.state==='active'||s.state==='paused').length;
 
@@ -1765,7 +1778,7 @@ function renderDaily(){
     toLocalDate(s.started_at)===todayStr&&
     (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
   ).length;
-  const totalSent=allStations.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+  const totalSent=allStations.filter(s=>s.state==='queue'&&toLocalDate(s.started_at)===todayStr).length;
   const totalActive=allStations.filter(s=>s.state==='active'||s.state==='paused').length;
   // PENDING = Queue + Waiting combined (work that is not actively being processed but is in the system)
   const totalPending=allStations.filter(s=>s.state==='queue'||s.state==='waiting').length;
@@ -1962,6 +1975,52 @@ function toggleAdminSection(id){
   const isOpen=el.style.display!=='none';
   el.style.display=isOpen?'none':'block';
   if(arrow)arrow.textContent=isOpen?'▼':'▲';
+}
+
+function exportNotesCSV(){
+  // Notu olan tum aktif (active/paused/waiting) isleri CSV olarak indir
+  // jobs zaten rebuildJobs'ta sadece bu state'leri iceriyor
+  const withNotes=jobs.filter(j=>j.note&&String(j.note).trim()!=='');
+  if(!withNotes.length){
+    showToast('No notes to export / Khong co ghi chu','amber');
+    return;
+  }
+  // SO -> Team -> Item order
+  const TEAM_ORDER={'Cutting':1,'Part Pull':2,'C1':3,'C2':4,'C3':5,'C4':6,'Testing / Packing':7};
+  const sorted=withNotes.slice().sort((a,b)=>{
+    if(a.so!==b.so)return a.so.localeCompare(b.so);
+    const ta=TEAM_ORDER[a.group]||99,tb=TEAM_ORDER[b.group]||99;
+    if(ta!==tb)return ta-tb;
+    return a.item.localeCompare(b.item);
+  });
+  // CSV escape: tirnak, virgul, satir sonu varsa cift tirnak icine al, icteki tirnaklari iki kat yap
+  const esc=v=>{
+    const s=v==null?'':String(v);
+    return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const headers=['SO No','Item No','Qty','Team','State','Note'];
+  const linesOut=[headers.join(',')];
+  sorted.forEach(j=>{
+    linesOut.push([
+      esc(j.so),
+      esc(j.item),
+      esc((j.displayQty||j.totalQty)+' pcs'),
+      esc(j.group),
+      esc(j.state),
+      esc(j.note)
+    ].join(','));
+  });
+  // UTF-8 BOM ekle ki Excel Turkce/Vietnamese karakterleri dogru gostersin
+  const csv='\ufeff'+linesOut.join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const d=new Date();
+  const fn='shaxon-notes-'+d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'.csv';
+  const a=document.createElement('a');
+  a.href=url;a.download=fn;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+  showToast('Exported '+withNotes.length+' notes / Da xuat','green');
 }
 
 function renderAdmin(){
