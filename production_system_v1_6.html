@@ -2281,14 +2281,12 @@ function detectZombies(){
     });
 
     // Type B: Same team duplicate (e.g. C4 done + C4 active again)
-    // For each team, if there is already a "done" station, any later ALIVE station from the same team is a zombie
     const allTeams=['Cutting','Part Pull','C1','C2','C3','C4',FINAL_TEAM];
     for(const team of allTeams){
       const teamStations=sts.filter(s=>s.grp===team);
       const hasDone=teamStations.some(s=>s.state==='done');
       if(hasDone){
         teamStations.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
-          // Skip if already added from Type A
           if(!zombies.some(z=>z.stationId===s.id)){
             zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:team+' already finished this item once'});
           }
@@ -2296,11 +2294,36 @@ function detectZombies(){
       }
     }
 
-    // Type C: Item is fully_done but C-teams or Testing still alive (not just Cutting/PP)
+    // Type C: Item is fully_done but stations still alive
     if(isComplete){
       sts.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
         if(!zombies.some(z=>z.stationId===s.id)){
           zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Item already completed'});
+        }
+      });
+    }
+
+    // Type D: Cutting/Part Pull started AFTER a C-team or Test/Pack started — order reversed
+    // Earliest started_at among C-teams or Test/Pack
+    const downstreamStarts=sts
+      .filter(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&s.started_at)
+      .map(s=>new Date(s.started_at).getTime())
+      .filter(t=>!isNaN(t));
+    if(downstreamStarts.length){
+      const earliestDownstream=Math.min(...downstreamStarts);
+      // Find Cutting/Part Pull stations started AFTER this downstream start
+      sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.started_at).forEach(s=>{
+        const ts=new Date(s.started_at).getTime();
+        if(!isNaN(ts)&&ts>earliestDownstream){
+          // Skip taken (already cleaned) and already-detected
+          if(s.state==='taken')return;
+          if(zombies.some(z=>z.stationId===s.id))return;
+          zombies.push({
+            stationId:s.id,lineId:line.id,
+            so:line.so,item:line.item,qty:line.qty,
+            grp:s.grp,state:s.state,
+            reason:s.grp+' started AFTER C-team/Test (wrong order)'
+          });
         }
       });
     }
