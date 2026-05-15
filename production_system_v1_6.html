@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#1a2a5e">
 <title>Shaxon Production v1.7</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body style="margin:0;padding:0;" autocomplete="off">
 <style>
@@ -2088,6 +2089,21 @@ function renderAdmin(){
         ${completedLinesFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'No completed orders')+'</div>'}
       </div>
     </div>
+    <div class="admin-section" data-sec="export">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('export')">📥 Export Data / Xuat du lieu</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Export all data to Excel — SO, item, qty, note, team, state, started time and finished time. Use this to discuss with purchasing or share full status snapshot.
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="exportToExcel('all')" style="padding:8px 16px;font-size:13px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Export All (Active + Queue + Completed)</button>
+            <button onclick="exportToExcel('open')" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Open Only (Active + Queue)</button>
+            <button onclick="exportToExcel('notes')" style="padding:8px 16px;font-size:13px;background:#FF9800;color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 With Notes Only</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="admin-section" data-sec="zombie">
       <div class="admin-section-hdr" onclick="toggleAdminSection('zombie')">🧟 Clean Stuck Cutting / Part Pull (Zombie)</div>
       <div class="admin-section-body">
@@ -2160,7 +2176,7 @@ function getAdminSectionStates(){
     if(raw)return JSON.parse(raw);
   }catch(e){}
   // Default state: stuck open, all others collapsed
-  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',zombie:'collapsed',consistency:'collapsed',shift:'collapsed',danger:'collapsed'};
+  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',shift:'collapsed',danger:'collapsed'};
 }
 
 function applyAdminSectionStates(){
@@ -2179,6 +2195,84 @@ function toggleAdminSection(key){
   const states=getAdminSectionStates();
   states[key]=el.classList.contains('collapsed')?'collapsed':'open';
   try{localStorage.setItem('shaxon_admin_sections',JSON.stringify(states));}catch(e){}
+}
+
+// ── EXCEL EXPORT ────────────────────────────────────────────────────────────
+function exportToExcel(scope){
+  if(typeof XLSX==='undefined'){
+    showToast('Excel library not loaded — check internet','red');
+    return;
+  }
+  try{
+    setSyncDot('syncing');
+    // Build rows from lines
+    const rows=[];
+    for(const line of lines){
+      const sts=line.stations||[];
+      // Filter logic based on scope
+      let stations;
+      if(scope==='all'){
+        // All non-taken stations
+        stations=sts.filter(s=>s.state!=='taken');
+      } else if(scope==='open'){
+        // Active, paused, waiting, queue (not done, not taken)
+        stations=sts.filter(s=>['active','paused','waiting','queue'].includes(s.state));
+      } else if(scope==='notes'){
+        // Has note + not taken
+        stations=sts.filter(s=>s.state!=='taken'&&s.note&&s.note.trim());
+      }
+      if(!stations.length)continue;
+      // For each station, one row
+      for(const s of stations){
+        rows.push({
+          'SO':line.so,
+          'Item No':line.item,
+          'Qty':line.qty,
+          'Team':s.grp,
+          'State':s.state,
+          'Note':s.note||'',
+          'Started At':s.started_at?new Date(s.started_at).toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'',
+          'Finished At':s.done_at?fmtTime(s.done_at):'',
+          'Sent Qty':s.sent_qty||0,
+          'Line Complete':line.fully_done?'Yes':'No'
+        });
+      }
+    }
+    if(!rows.length){
+      showToast('No rows to export for selected scope','amber');
+      setSyncDot('ok');
+      return;
+    }
+    // Create workbook
+    const ws=XLSX.utils.json_to_sheet(rows);
+    // Set column widths for readability
+    ws['!cols']=[
+      {wch:10}, // SO
+      {wch:24}, // Item No
+      {wch:10}, // Qty
+      {wch:18}, // Team
+      {wch:10}, // State
+      {wch:32}, // Note
+      {wch:18}, // Started At
+      {wch:12}, // Finished At
+      {wch:10}, // Sent Qty
+      {wch:14}  // Line Complete
+    ];
+    const wb=XLSX.utils.book_new();
+    const sheetName=scope==='all'?'All Orders':scope==='open'?'Open Orders':'Orders with Notes';
+    XLSX.utils.book_append_sheet(wb,ws,sheetName);
+    // Filename with date
+    const d=new Date();
+    const dStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const filename='shaxon_'+scope+'_'+dStr+'.xlsx';
+    XLSX.writeFile(wb,filename);
+    setSyncDot('ok');
+    showToast('✓ Exported '+rows.length+' rows to '+filename,'green');
+  }catch(err){
+    console.error('Export error:',err);
+    setSyncDot('error');
+    showToast('Export failed: '+(err.message||''),'red');
+  }
 }
 
 // ── ZOMBIE CLEANER ──────────────────────────────────────────────────────────
