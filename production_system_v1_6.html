@@ -2890,20 +2890,21 @@ function parseNote(note){
   const s=String(note).trim();
   if(!s)return null;
   // Find material codes — strip trailing "-?" or "?"
+  // Case-insensitive: workers sometimes write lowercase (ul120-4) — we accept and uppercase later
   const matCandidates=[];
   const seen=new Set();
   // Complex codes (letters+digits with at least one dash): UL120-4, HON-PCS-E68LKAU2N, M39012-01-0503-1
-  const complexRe=/\b([A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+)(?:-\?)?/g;
+  const complexRe=/\b([A-Za-z][A-Za-z0-9]+(?:-[A-Za-z0-9]+)+)(?:-\?)?/g;
   let m;
   while((m=complexRe.exec(s))!==null){
-    let code=m[1].replace(/-\?$/,'').replace(/-$/,'');
+    let code=m[1].replace(/-\?$/,'').replace(/-$/,'').toUpperCase();
     if(code.length>=4&&!seen.has(code)){seen.add(code);matCandidates.push(code);}
   }
   // If still nothing, try simple codes like "UL170-8SH" or single tokens
   if(!matCandidates.length){
-    const simpleRe=/\b([A-Z][A-Z0-9]{3,}(?:-[A-Z0-9]+)*)\??/g;
+    const simpleRe=/\b([A-Za-z][A-Za-z0-9]{3,}(?:-[A-Za-z0-9]+)*)\??/g;
     while((m=simpleRe.exec(s))!==null){
-      const code=m[1];
+      const code=m[1].toUpperCase();
       if(code.length>=4&&!seen.has(code)){seen.add(code);matCandidates.push(code);}
     }
   }
