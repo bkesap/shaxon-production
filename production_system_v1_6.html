@@ -841,6 +841,14 @@ body{font-family:var(--font);background:var(--bg2);}
 <!-- CHAT MESSAGE BUBBLE — delete button hover/touch CSS -->
 <style>
 .msg-bubble .msg-del-btn:active{background:rgba(255,255,255,.35)!important;transform:scale(.92);}
+/* Schedule table — resizable columns */
+.sched-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;}
+.sched-table th{position:relative;padding:9px 12px;text-align:left;font-size:11px;color:var(--txt3);text-transform:uppercase;background:var(--bg2);border-bottom:1px solid var(--bdr3);user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sched-table td{padding:8px 12px;border-bottom:1px solid var(--bdr3);vertical-align:top;overflow:hidden;text-overflow:ellipsis;}
+.sched-table td.col-item{font-family:monospace;font-size:12px;word-break:break-all;white-space:normal;}
+.col-resizer{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;}
+.col-resizer:hover,.col-resizer.dragging{background:var(--blue-m);}
+.sched-table tr.sched-row:hover{background:var(--bg2);}
 </style>
 
 <div class="toast" id="toast"></div>
@@ -2021,71 +2029,162 @@ function renderSchedule(){
   const rows=filtered.map(it=>{
     const l=it.line;
     const s=it.current;
-    const teamPill=`<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${s.state==='active'?'var(--green-lt)':s.state==='paused'?'var(--amber-lt)':s.state==='queue'?'#E8EAF6':'#F3E5F5'};color:${s.state==='active'?'#1b5e20':s.state==='paused'?'var(--amber-dk)':s.state==='queue'?'#283593':'#6a1b9a'};">${shortGrp(s.grp)} · ${s.state}</span>`;
-    // Material cell
-    let matCell='<span style="color:var(--txt3);font-size:12px;">—</span>';
+    const teamPill=`<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${s.state==='active'?'var(--green-lt)':s.state==='paused'?'var(--amber-lt)':s.state==='queue'?'#E8EAF6':'#F3E5F5'};color:${s.state==='active'?'#1b5e20':s.state==='paused'?'var(--amber-dk)':s.state==='queue'?'#283593':'#6a1b9a'};white-space:nowrap;">${shortGrp(s.grp)} · ${s.state}</span>`;
+
+    // Material columns
+    let matCode='<span style="color:var(--txt3);">—</span>';
+    let needQty='<span style="color:var(--txt3);">—</span>';
+    let onHandCell='<span style="color:var(--txt3);">—</span>';
+    let onOrderCell='<span style="color:var(--txt3);">—</span>';
+    let etaCell='<span style="color:var(--txt3);">—</span>';
+    let statusCell='<span style="color:var(--txt3);">—</span>';
+
     if(it.parsed&&it.parsed.material){
+      matCode=`<span style="font-weight:600;color:var(--blue-dk);font-family:monospace;font-size:12px;">${it.parsed.material}</span>`;
+      if(it.parsed.qty)needQty=`<span style="font-weight:500;">${it.parsed.qty.toLocaleString()}</span>`;
+      if(it.inv){
+        const oh=Number(it.inv.qty_on_hand)||0;
+        const oo=Number(it.inv.qty_on_order)||0;
+        onHandCell=`<span style="font-weight:500;">${oh.toLocaleString()}</span>`;
+        if(oo>0)onOrderCell=`<span style="color:var(--blue-dk);font-weight:500;">${oo.toLocaleString()}</span>`;
+        else onOrderCell='<span style="color:var(--txt3);">0</span>';
+        if(it.inv.earliest_eta){
+          const ed=new Date(it.inv.earliest_eta);
+          etaCell=`<span style="font-size:12px;">${ed.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</span>`;
+        }
+      } else {
+        onHandCell='<span style="color:var(--amber-dk);font-size:11px;">no data</span>';
+      }
       const ms=it.matStatus;
-      const onHand=it.inv?Number(it.inv.qty_on_hand)||0:null;
-      const onOrder=it.inv?Number(it.inv.qty_on_order)||0:0;
-      const eta=it.inv&&it.inv.earliest_eta?new Date(it.inv.earliest_eta).toLocaleDateString('en-US',{month:'short',day:'numeric'}):null;
-      matCell=`<div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-size:13px;font-weight:600;color:var(--blue-dk);">${it.parsed.material}</span>
-        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 7px;border-radius:6px;background:${ms.bg};color:${ms.color};width:fit-content;">${ms.icon} ${ms.label}${it.parsed.qty?' · need '+it.parsed.qty.toLocaleString():''}</span>
-        ${onHand!==null?`<span style="font-size:10px;color:var(--txt3);">📦 ${onHand.toLocaleString()} on hand${onOrder>0?' · 📥 '+onOrder.toLocaleString()+(eta?' ETA '+eta:''):''}</span>`:'<span style="font-size:10px;color:var(--txt3);">No inventory data</span>'}
-      </div>`;
+      statusCell=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;background:${ms.bg};color:${ms.color};white-space:nowrap;font-weight:500;">${ms.icon} ${ms.label}</span>`;
     } else if(it.noteText){
-      matCell=`<span style="font-size:11px;color:var(--txt3);font-style:italic;">${it.noteText.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
+      matCode=`<span style="font-size:11px;color:var(--txt3);font-style:italic;">${it.noteText.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
+
     // Ship cell
     const ss=it.shipStatus;
-    let shipCell='<span style="color:var(--txt3);font-size:12px;">—</span>';
+    let shipCell='<span style="color:var(--txt3);">—</span>';
     if(it.ship&&it.ship.ship_date){
       shipCell=`<div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-size:13px;font-weight:500;color:var(--txt1);">${ss.dateStr}</span>
-        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 7px;border-radius:6px;background:${ss.bg};color:${ss.color};width:fit-content;">${ss.icon} ${ss.label}</span>
-        ${it.ship.customer?`<span style="font-size:10px;color:var(--txt3);">${it.ship.customer}</span>`:''}
+        <span style="font-size:12px;font-weight:500;">${ss.dateStr}</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 6px;border-radius:5px;background:${ss.bg};color:${ss.color};width:fit-content;white-space:nowrap;">${ss.icon} ${ss.label}</span>
       </div>`;
     }
-    // Row background: highlight by risk
+
     let rowBg='';
     if(it.matStatus.level==='short'||ss.level==='late')rowBg='background:#FFF5F5;';
     else if(it.matStatus.level==='po'||ss.level==='urgent')rowBg='background:#FFFBEB;';
 
-    return `<tr style="${rowBg}border-bottom:1px solid var(--bdr3);">
-      <td style="padding:10px 12px;font-weight:600;color:var(--blue);">${l.so}</td>
-      <td style="padding:10px 12px;font-family:monospace;font-size:12px;">${l.item}</td>
-      <td style="padding:10px 12px;font-weight:500;">${l.qty}</td>
-      <td style="padding:10px 12px;">${teamPill}</td>
-      <td style="padding:10px 12px;">${matCell}</td>
-      <td style="padding:10px 12px;">${shipCell}</td>
+    return `<tr class="sched-row" style="${rowBg}">
+      <td style="font-weight:600;color:var(--blue);">${l.so}</td>
+      <td class="col-item" title="${l.item}">${l.item}</td>
+      <td style="font-weight:500;white-space:nowrap;">${l.qty}</td>
+      <td>${teamPill}</td>
+      <td>${matCode}</td>
+      <td style="text-align:right;">${needQty}</td>
+      <td style="text-align:right;">${onHandCell}</td>
+      <td style="text-align:right;">${onOrderCell}</td>
+      <td>${etaCell}</td>
+      <td>${statusCell}</td>
+      <td>${shipCell}</td>
     </tr>`;
   }).join('');
 
+  // Load saved column widths from localStorage
+  const defaultWidths={so:90,item:180,qty:70,team:120,mat:140,need:80,onhand:90,onorder:90,eta:90,status:110,ship:130};
+  let savedWidths={};
+  try{savedWidths=JSON.parse(localStorage.getItem('shaxon_sched_cols')||'{}');}catch(e){}
+  const w=Object.assign({},defaultWidths,savedWidths);
+
   body.innerHTML=`
-    <div style="background:var(--bg1);border:1px solid var(--bdr3);border-radius:var(--r-md);overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="background:var(--bg2);font-size:11px;color:var(--txt3);text-transform:uppercase;">
-          <th style="padding:9px 12px;text-align:left;width:100px;">SO</th>
-          <th style="padding:9px 12px;text-align:left;">Item</th>
-          <th style="padding:9px 12px;text-align:left;width:80px;">Qty</th>
-          <th style="padding:9px 12px;text-align:left;width:130px;">Current Step</th>
-          <th style="padding:9px 12px;text-align:left;width:280px;">Material Status</th>
-          <th style="padding:9px 12px;text-align:left;width:200px;">Ship Date</th>
+    <div style="background:var(--bg1);border:1px solid var(--bdr3);border-radius:var(--r-md);overflow:auto;">
+      <table class="sched-table">
+        <colgroup>
+          <col data-col="so" style="width:${w.so}px;">
+          <col data-col="item" style="width:${w.item}px;">
+          <col data-col="qty" style="width:${w.qty}px;">
+          <col data-col="team" style="width:${w.team}px;">
+          <col data-col="mat" style="width:${w.mat}px;">
+          <col data-col="need" style="width:${w.need}px;">
+          <col data-col="onhand" style="width:${w.onhand}px;">
+          <col data-col="onorder" style="width:${w.onorder}px;">
+          <col data-col="eta" style="width:${w.eta}px;">
+          <col data-col="status" style="width:${w.status}px;">
+          <col data-col="ship" style="width:${w.ship}px;">
+        </colgroup>
+        <thead><tr>
+          <th>SO<div class="col-resizer" data-col="so"></div></th>
+          <th>Item<div class="col-resizer" data-col="item"></div></th>
+          <th>Qty<div class="col-resizer" data-col="qty"></div></th>
+          <th>Current Step<div class="col-resizer" data-col="team"></div></th>
+          <th>Material<div class="col-resizer" data-col="mat"></div></th>
+          <th style="text-align:right;">Need<div class="col-resizer" data-col="need"></div></th>
+          <th style="text-align:right;">On Hand<div class="col-resizer" data-col="onhand"></div></th>
+          <th style="text-align:right;">On PO<div class="col-resizer" data-col="onorder"></div></th>
+          <th>ETA<div class="col-resizer" data-col="eta"></div></th>
+          <th>Status<div class="col-resizer" data-col="status"></div></th>
+          <th>Ship Date<div class="col-resizer" data-col="ship"></div></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
     <div style="margin-top:14px;padding:12px;background:var(--bg1);border:1px solid var(--bdr3);border-radius:var(--r-md);font-size:12px;color:var(--txt2);line-height:1.7;">
       <strong>Legend:</strong>
-      🔴 SHORT = inventory + PO not enough for need ·
-      🟡 Wait PO = need exceeds stock but PO coming ·
+      🔴 SHORT = on hand + PO not enough ·
+      🟡 Wait PO = need PO to cover ·
       ✅ OK = stock sufficient ·
-      ⏰ urgent = ship date ≤ 7 days or past ·
-      📦 = on hand · 📥 = on purchase order
+      ⏰ urgent = ship date ≤ 7 days or past
       <br>
-      <em>Material status is parsed automatically from worker notes (e.g. "UL120-4? SHORT 2175" → material UL120-4, need 2175).</em>
+      <em>Material auto-parsed from worker notes. Drag column borders to resize.</em>
     </div>`;
+  // Hook up column resizers
+  setupColumnResizers();
+}
+
+// ── COLUMN RESIZE ───────────────────────────────────────────────────────────
+function setupColumnResizers(){
+  document.querySelectorAll('.col-resizer').forEach(rz=>{
+    rz.addEventListener('mousedown',startResize);
+    rz.addEventListener('touchstart',startResize);
+  });
+}
+
+function startResize(e){
+  e.preventDefault();
+  const rz=e.currentTarget;
+  const col=rz.getAttribute('data-col');
+  const table=rz.closest('table');
+  const colEl=table.querySelector(`col[data-col="${col}"]`);
+  if(!colEl)return;
+  rz.classList.add('dragging');
+  const startX=(e.touches?e.touches[0].clientX:e.clientX);
+  const startW=colEl.offsetWidth;
+
+  function onMove(ev){
+    const cx=ev.touches?ev.touches[0].clientX:ev.clientX;
+    const dx=cx-startX;
+    const newW=Math.max(40,startW+dx);
+    colEl.style.width=newW+'px';
+  }
+  function onUp(){
+    rz.classList.remove('dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchmove',onMove);
+    document.removeEventListener('touchend',onUp);
+    // Save widths
+    try{
+      const widths={};
+      document.querySelectorAll('.sched-table col[data-col]').forEach(c=>{
+        widths[c.getAttribute('data-col')]=c.offsetWidth;
+      });
+      localStorage.setItem('shaxon_sched_cols',JSON.stringify(widths));
+    }catch(e){}
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchmove',onMove);
+  document.addEventListener('touchend',onUp);
 }
 
 // ── RENDER DASHBOARD ──────────────────────────────────────────────────────────
