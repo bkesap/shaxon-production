@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a2a5e">
-<title>Shaxon Production v25</title>
+<title>Shaxon Production v1.7</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
-<body style="margin:0;padding:0;" autocomplete="off">
+<body style="margin:0;padding:0;">
 <style>
 :root{
   --font:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
@@ -118,7 +118,7 @@ body{font-family:var(--font);background:var(--bg2);}
 .bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
 .bulk-so-label{font-size:11px;font-weight:500;color:var(--txt2);}
 .bulk-so-val{font-size:15px;font-weight:700;color:var(--blue);}
-.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
+.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;}
 .bulk-row{display:flex;align-items:center;gap:8px;}
 .bulk-item-wrap{flex:1;position:relative;}
 .bulk-item{width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);}
@@ -335,9 +335,6 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-del:active{opacity:.8;}
 .admin-empty{padding:20px;text-align:center;color:var(--txt3);font-size:13px;}
 
-/* CHAT - delete button always visible, slight emphasis on press */
-.msg-bubble .msg-del-btn:active{background:rgba(255,255,255,.35)!important;transform:scale(.92);}
-
 /* MODALS */
 .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
@@ -381,20 +378,38 @@ body{font-family:var(--font);background:var(--bg2);}
 .btn-ok:active{opacity:.85;}
 .info-box{font-size:12px;color:var(--txt2);background:var(--blue-lt);padding:9px 11px;border-radius:var(--r-md);line-height:1.7;}
 
-.take-team-btn{padding:14px 8px;background:var(--bg2);border:1.5px solid var(--bdr2);border-radius:var(--r-md);font-size:15px;font-weight:600;cursor:pointer;color:var(--txt1);transition:all .15s;font-family:var(--font);}
-.take-team-btn:hover{background:var(--blue-lt);border-color:var(--blue-m);color:var(--blue);}
-.take-team-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff;}
 .toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--blue-dk);color:#fff;padding:8px 20px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:400;white-space:nowrap;}
 .toast.show{opacity:1;}
 .toast.green{background:#1b5e20;}
 .toast.red{background:#b71c1c;}
+
+/* v1.7 — Stuck/Ghost recovery UI */
+.stuck-banner{display:flex;align-items:center;gap:12px;margin:10px 16px 4px;padding:10px 14px;background:#FFF4F4;border:1px solid #F4B7B5;border-left:4px solid var(--red);border-radius:var(--r-md);font-size:13px;color:var(--red-dk);}
+.stuck-banner-ico{font-size:18px;}
+.stuck-banner-txt{flex:1;line-height:1.5;}
+.btn-recover-all{padding:7px 14px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-recover-all:active{opacity:.85;}
+.btn-recover-row{padding:5px 10px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-recover-row:active{opacity:.85;}
+.ob-stuck{background:#FFE5E3;color:var(--red-dk);border:1px solid #F4B7B5;}
+.ob-stuck .ob-dot{background:var(--red);animation:pr 1.2s infinite;}
+.row-stuck td{background:#FFF7F6 !important;}
+.row-stuck-admin td{background:#FFF7F6 !important;}
+.admin-section-stuck{border:1px solid #F4B7B5 !important;}
+@keyframes pr{0%,100%{opacity:1}50%{opacity:.4}}
+.ds-stuck-card{position:relative;}
+
+/* v1.7 — Pending offline ops indicator */
+.pending-ops-badge{display:none;padding:6px 10px;background:rgba(255,200,0,.18);color:#FFD54F;border:1px solid rgba(255,200,0,.4);border-radius:14px;font-size:11px;font-weight:600;margin-right:10px;align-items:center;gap:6px;}
+.pending-ops-badge.on{display:inline-flex;}
+.pending-ops-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:#FFD54F;animation:pa 1.2s infinite;}
 </style>
 
 <!-- OVERLAY -->
 <div class="overlay" id="connOverlay">
   <div class="spinner"></div>
   <div class="ov-logo">SHAXON</div>
-  <div class="ov-sub">Shaxon Production v25 — Connecting...</div>
+  <div class="ov-sub">Shaxon Production v1.7 — Connecting...</div>
 </div>
 
 <div class="app">
@@ -407,13 +422,13 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="nav-brand-sub">Production</div>
     </div>
   </div>
-  <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Cong nhan</span></div>
+  <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
-  <div class="nav-tab" id="completedTab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);cursor:pointer;"></span></div>
+  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);"></span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
-  <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
-  <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
+  <div style="flex:1;"></div>
+  <div id="pendingOpsBadge" class="pending-ops-badge">0 pending sync</div>
 </div>
 
 <!-- ══ WORKER ══ -->
@@ -433,18 +448,18 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="ef f-so">
       <label>Sales Order <span class="vn">/ So don hang</span></label>
       <input type="text" id="inputSO" placeholder="SO-1042" oninput="onSOInput()" onblur="schedHideSO()"
-        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"/>
       <div class="sug-box" id="soSug" style="display:none;"></div>
     </div>
     <div class="ef f-item">
       <label>Item No <span class="vn">/ Ma san pham</span></label>
       <input type="text" id="inputItem" placeholder="Type or select..." oninput="onItemInput()" onblur="schedHideItem()" onfocus="onItemFocus()"
-        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"/>
       <div class="sug-box" id="itemSug" style="display:none;"></div>
     </div>
     <div class="ef f-qty">
       <label>Qty (pcs) <span class="vn">/ SL</span></label>
-      <input type="number" id="inputQty" placeholder="100" min="1" data-lpignore="true" data-1p-ignore="true"/>
+      <input type="number" id="inputQty" placeholder="100" min="1"/>
     </div>
     <button class="start-btn" onclick="handleStart()">START</button>
     <button class="start-btn" style="background:var(--blue-m);font-size:13px;padding:0 12px;" onclick="openBulkSO()" title="Add multiple items for one SO">+ Add SO</button>
@@ -489,7 +504,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <span class="panel-lbl">Active Jobs (<span id="activeCount">0</span>)</span>
         <div class="job-search-wrap">
           <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="jobSearch" name="job_search_x" placeholder="Search..." oninput="renderWorker()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+          <input class="job-search" type="text" id="jobSearch" placeholder="Search..." oninput="renderWorker()"/>
         </div>
       </div>
       <div class="jobs-grid" id="jobsList">
@@ -503,14 +518,10 @@ body{font-family:var(--font);background:var(--bg2);}
 <div class="page" id="page-completed">
   <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <div class="panel-hdr" style="padding:10px 16px;">
-      <span class="panel-lbl">Completed (<span id="statDone">0</span>)</span>
+      <span class="panel-lbl">Completed Today (<span id="statDone">0</span>)</span>
       <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
         <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
-        <div class="job-search-wrap">
-          <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="completedSearch" name="completed_search_x" placeholder="Search SO or item..." oninput="renderDonePanel()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
-        </div>
       </div>
     </div>
     <div class="done-scroll" id="doneList" style="flex:1;overflow-y:auto;">
@@ -526,7 +537,7 @@ body{font-family:var(--font);background:var(--bg2);}
       <h2>Queue — Waiting for Next Station / Hang cho tram tiep theo</h2>
       <div class="job-search-wrap">
         <span class="job-search-ico">🔍</span>
-        <input class="job-search" type="text" id="queueSearch" name="queue_search_x" placeholder="Search SO or item..." oninput="renderQueue()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+        <input class="job-search" type="text" id="queueSearch" placeholder="Search SO or item..." oninput="renderQueue()" autocomplete="off" autocorrect="off" spellcheck="false"/>
       </div>
     </div>
     <div class="queue-body" id="queueBody">
@@ -540,7 +551,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="dash-inner">
     <div class="dash-top">
       <h2>Dashboard</h2>
-      <input type="text" class="dash-search" id="dashSearch" name="dash_search_8898" placeholder="🔍 Search SO or item..." oninput="renderDash()" inputmode="numeric" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+      <input type="text" class="dash-search" id="dashSearch" placeholder="🔍 Search SO or item..." oninput="renderDash()" autocomplete="off"/>
       <select class="filter-sel" id="filterStatus" onchange="renderDash()">
         <option value="">All Status</option>
         <option>In Progress</option><option>Paused</option><option>Done</option><option>Not Started</option>
@@ -554,44 +565,6 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="dash-stat"><div class="dash-stat-val" id="ds-done">0</div><div class="dash-stat-lbl">Complete</div></div>
     </div>
     <div class="dash-body" id="dashBody"><div class="empty-dash">Loading...</div></div>
-  </div>
-</div>
-
-<!-- ══ DAILY DATA ══ -->
-<div class="page" id="page-daily">
-  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
-    <div class="panel-hdr" style="padding:10px 16px;">
-      <span class="panel-lbl">Daily Data — <span id="dailyDate">--</span></span>
-      <div style="margin-left:auto;">
-        <button onclick="renderDaily()" style="padding:5px 14px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:var(--r-md);font-size:12px;font-weight:500;cursor:pointer;">↻ Refresh</button>
-      </div>
-    </div>
-    <div style="flex:1;overflow-y:auto;padding:14px 16px;" id="dailyBody">
-      <div class="empty-dash">Loading...</div>
-    </div>
-  </div>
-</div>
-
-<!-- ══ CHAT ══ -->
-<div class="page" id="page-chat">
-  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
-    <div class="panel-hdr" style="padding:10px 16px;background:var(--bg1);">
-      <span class="panel-lbl">💬 Team Chat — General / Tro chuyen chung</span>
-      <span style="margin-left:12px;font-size:12px;color:var(--txt3);">From: <strong id="chatDeviceName" style="color:var(--blue);">--</strong></span>
-      <button onclick="changeDeviceName()" style="margin-left:auto;padding:4px 10px;font-size:11px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:6px;cursor:pointer;">Change name / Doi ten</button>
-    </div>
-    <div id="chatMessages" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:6px;">
-      <div style="text-align:center;color:var(--txt3);font-size:13px;padding:20px;">Loading messages...</div>
-    </div>
-    <div style="display:flex;gap:8px;padding:10px 12px;background:var(--bg1);border-top:1px solid var(--bdr3);align-items:center;">
-      <label for="chatPhotoInput" style="width:42px;height:42px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;" title="Take photo / Chup anh">📷</label>
-      <input type="file" id="chatPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="handleChatPhoto(event)"/>
-      <input type="text" id="chatInput" placeholder="Type a message... / Nhap tin nhan..." 
-        style="flex:1;padding:10px 14px;font-size:15px;border:1px solid var(--bdr2);border-radius:20px;background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);"
-        autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other"
-        onkeydown="if(event.key==='Enter')sendChatMessage()"/>
-      <button onclick="sendChatMessage()" style="padding:10px 22px;background:var(--blue);color:#fff;border:none;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;">Send</button>
-    </div>
   </div>
 </div>
 
@@ -610,11 +583,6 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
-        <div class="job-search-wrap">
-          <span class="job-search-ico">🔍</span>
-          <input class="job-search" type="text" id="adminSearch" name="admin_search_x" placeholder="Search SO or item..." oninput="renderAdmin()" autocomplete="off" role="presentation" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
-        </div>
-        <button class="admin-logout" style="background:var(--green);border-color:var(--green-bdr);color:#fff;" onclick="exportNotesCSV()" title="Download CSV of all active jobs with notes">📋 Export Notes</button>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -684,27 +652,21 @@ body{font-family:var(--font);background:var(--bg2);}
 </div>
 
 <div class="modal-overlay" id="takeModal">
-  <div class="modal-box" style="width:420px;">
+  <div class="modal-box">
     <div class="modal-hdr blue"><div class="modal-title">Which team is taking this? / Nhom nao nhan?</div><div class="modal-sub" id="takeCtx"></div></div>
     <div class="modal-body">
-      <div style="font-size:12px;font-weight:500;color:var(--txt2);margin-bottom:10px;">Select your team / Chon nhom cua ban:</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;" id="takeTeamBtns">
-        <button class="take-team-btn" onclick="selectTakeTeam('C1')">C1</button>
-        <button class="take-team-btn" onclick="selectTakeTeam('C2')">C2</button>
-        <button class="take-team-btn" onclick="selectTakeTeam('C3')">C3</button>
-        <button class="take-team-btn" onclick="selectTakeTeam('C4')">C4</button>
-        <button class="take-team-btn" style="grid-column:span 2;" onclick="selectTakeTeam('Testing / Packing')">Testing / Packing</button>
-      </div>
-      <input type="hidden" id="takeTeamSel" value=""/>
-      <div id="takeConfirmBox" style="display:none;background:var(--blue-lt);border-radius:var(--r-md);padding:12px 14px;font-size:14px;color:var(--blue-dk);line-height:1.7;">
-        <div id="takeConfirmMsg"></div>
-        <div style="font-size:12px;font-style:italic;color:var(--txt3);margin-top:4px;" id="takeConfirmMsgVN"></div>
-      </div>
+      <select class="team-sel" id="takeTeamSel">
+        <option value="">-- Select your team --</option>
+        <option>Cutting</option>
+        <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
+        <option>Part Pull</option>
+        <option>Testing / Packing</option>
+      </select>
+      <div style="font-size:12px;color:var(--txt3);">This will move the job to your active list / Se chuyen viec vao danh sach cua ban</div>
     </div>
     <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel / Huy</button>
-      <button class="btn-cancel" id="takeCancelTeamBtn" style="display:none;" onclick="resetTakeModal()">← Back / Quay lai</button>
-      <button class="btn-ok" id="takeFinalBtn" style="display:none;" onclick="confirmTake()">✓ Confirm / Xac nhan</button>
+      <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel</button>
+      <button class="btn-ok" onclick="confirmTake()">Take Job / Nhan viec</button>
     </div>
   </div>
 </div>
@@ -776,27 +738,6 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
 </div>
 
-<!-- DEVICE NAME MODAL -->
-<div class="modal-overlay" id="deviceNameModal">
-  <div class="modal-box">
-    <div class="modal-hdr blue">
-      <div class="modal-title">📱 Device Name / Ten thiet bi</div>
-      <div class="modal-sub">First-time setup / Cai dat lan dau</div>
-    </div>
-    <div class="modal-body">
-      <div class="modal-msg">Please name this device so others can see who is sending messages.<br><span style="font-style:italic;color:var(--txt2);font-size:13px;">Ten thiet bi nay de moi nguoi biet ai gui tin nhan.</span></div>
-      <input type="text" id="deviceNameInput" placeholder="e.g. Cutting Tablet, Office PC" 
-        style="width:100%;padding:11px 14px;font-size:16px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);outline:none;"
-        autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other"
-        onkeydown="if(event.key==='Enter')saveDeviceName()"/>
-      <div style="font-size:12px;color:var(--txt3);">Examples: Cutting Tablet, C1 Tablet, Office PC, Manager Phone</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ok" onclick="saveDeviceName()">Save / Luu</button>
-    </div>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
@@ -824,6 +765,110 @@ function nowStr(){
   const ap=h>=12?'PM':'AM';h=h%12||12;
   return h+':'+pad(m)+' '+ap;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RPC + RETRY + OFFLINE QUEUE (v1.7)
+// ═══════════════════════════════════════════════════════════════════════════
+function newOpId(){
+  // unique id per logical operation; survives page reloads via storage
+  return 'op-'+Date.now()+'-'+Math.random().toString(36).slice(2,10);
+}
+
+const PENDING_OPS_KEY='shaxon_pending_ops_v1';
+function loadPendingOps(){
+  try{return JSON.parse(localStorage.getItem(PENDING_OPS_KEY)||'[]');}
+  catch(e){return [];}
+}
+function savePendingOps(ops){
+  try{localStorage.setItem(PENDING_OPS_KEY,JSON.stringify(ops));}catch(e){}
+  updatePendingBadge();
+}
+function addPendingOp(op){
+  const ops=loadPendingOps();ops.push(op);savePendingOps(ops);
+}
+function removePendingOp(opId){
+  savePendingOps(loadPendingOps().filter(o=>o.opId!==opId));
+}
+function updatePendingBadge(){
+  const n=loadPendingOps().length;
+  const el=document.getElementById('pendingOpsBadge');
+  if(!el)return;
+  if(n>0){el.textContent=n+' pending sync';el.classList.add('on');}
+  else el.classList.remove('on');
+}
+
+// rpcCall: wraps sb.rpc with:
+//   - retry on transient failures (network / 5xx)
+//   - persists to localStorage so a refresh/reconnect re-tries
+//   - idempotency via client_op_id (server dedupes)
+async function rpcCall(fnName, params, opts){
+  opts = opts || {};
+  const op = {
+    opId: params.p_client_op_id || newOpId(),
+    fnName: fnName,
+    params: params,
+    createdAt: Date.now(),
+    attempts: 0
+  };
+  if(!params.p_client_op_id) params.p_client_op_id = op.opId;
+  // persist BEFORE first attempt so a crash mid-call still recovers
+  if(opts.persist !== false) addPendingOp(op);
+  try{
+    const res = await attemptRpc(op);
+    if(opts.persist !== false) removePendingOp(op.opId);
+    return res;
+  }catch(err){
+    // keep in queue; processPendingOps() will retry later
+    console.error('[rpcCall] failed, will retry on reconnect:', err);
+    throw err;
+  }
+}
+
+async function attemptRpc(op, maxAttempts){
+  maxAttempts = maxAttempts || 3;
+  let lastErr;
+  for(let i=0;i<maxAttempts;i++){
+    op.attempts++;
+    try{
+      const {data,error} = await sb.rpc(op.fnName, op.params);
+      if(error) throw error;
+      return data;
+    }catch(e){
+      lastErr = e;
+      // only retry on network / 5xx errors. Don't retry on logic errors.
+      const msg = (e && (e.message||e.toString()))||'';
+      const transient = /network|fetch|timeout|503|502|504|abort/i.test(msg);
+      if(!transient) throw e;
+      await new Promise(r=>setTimeout(r, 600*(i+1)));
+    }
+  }
+  throw lastErr;
+}
+
+async function processPendingOps(){
+  const ops = loadPendingOps();
+  if(!ops.length) return;
+  console.log('[processPendingOps] retrying', ops.length, 'queued ops');
+  for(const op of ops){
+    try{
+      await attemptRpc(op, 2);
+      removePendingOp(op.opId);
+    }catch(e){
+      // give up after many retries
+      if(op.attempts >= 8){
+        console.warn('[processPendingOps] giving up on', op.opId, e);
+        removePendingOp(op.opId);
+      }
+      // otherwise leave it for next round
+    }
+  }
+}
+
+// Retry pending ops when the network comes back
+window.addEventListener('online', ()=>{ processPendingOps().then(()=>loadAll()); });
+// And on a slower cadence regardless
+setInterval(()=>{ if(navigator.onLine) processPendingOps(); }, 15000);
+// ═══════════════════════════════════════════════════════════════════════════
 function updateClock(){
   const d=new Date();
   document.getElementById('clock').textContent=nowStr();
@@ -840,27 +885,15 @@ function setSyncDot(s){
 }
 const shortGrp=g=>g==='Testing / Packing'?'Test/Pack':g;
 function closeModal(id){document.getElementById(id).classList.remove('open');}
-function clearAllSearches(){
-  const ids=['jobSearch','queueSearch','dashSearch'];
-  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-}
 function showPage(p,el){
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
-  clearAllSearches();
   if(p==='dash')renderDash();
   if(p==='queue')renderQueue();
   if(p==='admin')renderAdmin();
   if(p==='completed')renderDonePanel();
-  if(p==='daily')renderDaily();
-  if(p==='chat'){
-    if(!deviceName)ensureDeviceName();
-    renderChatMessages();
-    markChatAsSeen();
-    setTimeout(()=>{const inp=document.getElementById('chatInput');if(inp)inp.focus();},100);
-  }
 }
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
@@ -877,8 +910,6 @@ async function loadAll(){
     renderWorker();renderQueue();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
     if(document.getElementById('page-admin').classList.contains('active'))renderAdmin();
-    if(document.getElementById('page-completed').classList.contains('active'))renderDonePanel();
-    if(document.getElementById('page-daily').classList.contains('active'))renderDaily();
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Connection error / Loi ket noi','red');
@@ -920,21 +951,16 @@ function rebuildJobs(){
 function rebuildDone(){
   doneList=[];
   lines.forEach(line=>{
-    // Only show fully completed orders in Completed tab
-    if(!line.fully_done)return;
-    const doneStations=line.stations.filter(s=>s.state==='done');
-    if(!doneStations.length)return;
-    // Only keep the latest done station per item
-    const latest=doneStations.reduce((a,b)=>(a.done_at||'')>(b.done_at||'')?a:b);
-    doneList.push({
-      so:line.so,item:line.item,qty:line.qty,
-      group:latest.grp,totalMs:latest.elapsed_ms||0,
-      doneAt:latest.done_at||'',fullyDone:line.fully_done,
-      note:latest.note||'',sentQty:latest.sent_qty||0,
-      lineFullyDone:line.fully_done
+    line.stations.filter(s=>s.state==='done').forEach(st=>{
+      doneList.push({
+        so:line.so,item:line.item,qty:line.qty,
+        group:st.grp,totalMs:st.elapsed_ms||0,
+        doneAt:st.done_at||'',fullyDone:line.fully_done,
+        note:st.note||'',sentQty:st.sent_qty||0
+      });
     });
   });
-  doneList.sort((a,b)=>b.doneAt<a.doneAt?1:-1);
+  doneList.sort((a,b)=>b.doneAt>a.doneAt?1:-1);
 }
 
 function rebuildQueue(){
@@ -968,7 +994,6 @@ function onTeamChange(){
   const isAll=currentTeam==='__ALL__';
   document.getElementById('teamDisplay').textContent=isAll?'All Teams — View Only':currentTeam||'-- Select Team --';
   document.getElementById('readonlyBanner').className='readonly-banner'+(isAll?' on':'');
-  const js=document.getElementById('jobSearch');if(js)js.value='';
   renderWorker();
 }
 
@@ -1053,12 +1078,6 @@ function schedHideItem(){itemHideT=setTimeout(()=>{document.getElementById('item
 
 // ── START ─────────────────────────────────────────────────────────────────────
 function handleStart(){
-  // Weekend check — no work allowed on weekends
-  const _wd=new Date().getDay();
-  if(_wd===0||_wd===6){
-    showToast('Weekend — no work allowed / Cuoi tuan — khong lam viec','red');
-    return;
-  }
   const team=document.getElementById('inputTeam').value.trim();
   const so=document.getElementById('inputSO').value.trim().toUpperCase();
   const item=document.getElementById('inputItem').value.trim().toUpperCase();
@@ -1068,54 +1087,11 @@ function handleStart(){
   if(!item){showToast('Enter Item No');return;}
   if(!qty){showToast('Enter quantity / Nhap so luong');return;}
   const existingLine=lines.find(l=>l.so===so&&l.item===item);
-  // Cutting ve Part Pull yeni siparis acabilir. Diger teamler queue'dan almali.
-  const GATE_TEAMS=['Cutting','Part Pull'];
-  if(!existingLine&&!GATE_TEAMS.includes(team)){
-    showWarn('red','Cannot Start Here','Release from Cutting or Part Pull only',
-      `New items can only be released by <strong>Cutting</strong> or <strong>Part Pull</strong>. Other teams must take items from the Queue.`,
-      `Chi Cutting hoac Part Pull moi co the tao don moi. Cac nhom khac phai lay tu Queue.`,
-      `<div class="modal-detail-row">Selected team: <strong>${team}</strong></div>`);
-    return;
-  }
   if(existingLine){
-    // STRICT RULE: aynı SO+Item zaten sistemde varsa yeni START yapılamaz.
-    // Sadece tüm kayıtları "taken" durumunda VEYA hiç ALIVE kaydı yoksa izin var.
-    // ALIVE = active, paused, waiting, done, queue
-    const ALIVE_STATES=['active','paused','waiting','done','queue'];
-    const aliveStations=existingLine.stations.filter(s=>ALIVE_STATES.includes(s.state));
-
-    // Item complete olmuşsa
-    if(existingLine.fully_done){
-      showWarn('red','Already Completed','Da hoan thanh',
-        `<strong>${item}</strong> for SO <strong>${so}</strong> is already marked as <strong>completed</strong>. Cannot start again.`,
-        `San pham nay da duoc danh dau HOAN THANH. Khong the bat dau lai.`,'');
-      return;
-    }
-
-    // Sistemde herhangi bir aktif kayıt varsa
-    if(aliveStations.length>0){
-      const states=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
-      const activeStation=aliveStations.find(s=>s.state==='active'||s.state==='paused');
-      const queueStation=aliveStations.find(s=>s.state==='queue');
-      let mainMsg,vnMsg;
-      if(activeStation){
-        mainMsg=`<strong>${item}</strong> is currently <strong>${activeStation.state}</strong> at <strong>${shortGrp(activeStation.grp)}</strong>. Cannot start a new copy.`;
-        vnMsg=`San pham dang lam tai ${shortGrp(activeStation.grp)}. Khong the bat dau ban moi.`;
-      } else if(queueStation){
-        mainMsg=`<strong>${item}</strong> is waiting in <strong>Queue</strong> for the next team. Cannot start a new copy at <strong>${team}</strong>.`;
-        vnMsg=`San pham dang trong Queue cho nhom tiep theo.`;
-      } else {
-        mainMsg=`<strong>${item}</strong> already exists in the system. Cannot start a new copy.`;
-        vnMsg=`San pham da co trong he thong.`;
-      }
-      showWarn('red','Already in System / Da co trong he thong','Cannot start duplicate',
-        mainMsg,vnMsg,
-        `<div class="modal-detail-row">Existing stations: <strong>${states}</strong></div>`);
-      return;
-    }
-
-    // Buraya gelinirse: existingLine var ama tum kayitlar "taken" — yeni START'a izin var
-    // Qty kontrolu yine de yapilsin
+    const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
+    if(activeHere){showWarn('amber','Already Active Here','Da bat dau roi',`<strong>${item}</strong> is already active at <strong>${team}</strong>.`,`San pham nay dang duoc lam tai nhom nay.`,'');return;}
+    const doneHere=existingLine.stations.find(s=>s.grp===team&&s.state==='done');
+    if(doneHere){showWarn('red','Already Completed Here','Da hoan thanh roi',`<strong>${item}</strong> was already completed at <strong>${team}</strong> at ${doneHere.done_at}.`,`San pham nay da hoan thanh tai tram nay.`,`<div class="modal-detail-row">Completed at: <strong>${doneHere.done_at}</strong></div>`);return;}
     const existingQty=parseInt(existingLine.qty)||0;
     if(qty!==existingQty){
       showWarn('amber','Quantity Mismatch / So luong khong khop','Hay kiem tra lai',
@@ -1124,6 +1100,8 @@ function handleStart(){
         `<div class="modal-detail-row">Previous qty: <strong>${existingLine.qty}</strong></div><div class="modal-detail-row">You entered: <strong>${qty} pcs</strong></div>`);
       return;
     }
+    const activeElsewhere=jobs.find(j=>j.lineId===existingLine.id&&j.group!==team&&(j.state==='active'||j.state==='paused'));
+    if(activeElsewhere){showWarn('red','In Progress Elsewhere','Dang lam o tram khac',`<strong>${item}</strong> is currently at <strong>${activeElsewhere.group}</strong>. It must be sent to queue first.`,`San pham dang duoc lam tai tram khac.`,`<div class="modal-detail-row">Active at: <strong>${activeElsewhere.group}</strong></div>`);return;}
   }
   confirmPending={team,so,item,qty,existingLine};
   document.getElementById('confirmGrid').innerHTML=`
@@ -1143,18 +1121,27 @@ async function confirmStart(){
   setSyncDot('syncing');
   try{
     let lineId;
-    if(existingLine){lineId=existingLine.id;}
-    else{
-      const {data,error}=await sb.from('lines').insert({so,item,qty:qty+' pcs',fully_done:false}).select().single();
-      if(error)throw error;
-      lineId=data.id;
+    if(existingLine){
+      // Existing line just needs a new active station — keep simple path
+      lineId=existingLine.id;
+      const {error:se}=await sb.from('stations').insert({
+        line_id:lineId,grp:team,state:'active',
+        started_at:new Date().toISOString(),elapsed_ms:0,
+        done_at:null,note:null,sent_qty:0,remaining_qty:qty
+      });
+      if(se)throw se;
+    } else {
+      // New line: atomic line + first station via RPC
+      const res = await rpcCall('rpc_start_new_line', {
+        p_so: so,
+        p_item: item,
+        p_qty_text: qty+' pcs',
+        p_qty_int: qty,
+        p_team: team,
+        p_client_op_id: newOpId()
+      });
+      lineId = res && res.line_id;
     }
-    const {error:se}=await sb.from('stations').insert({
-      line_id:lineId,grp:team,state:'active',
-      started_at:new Date().toISOString(),elapsed_ms:0,
-      done_at:null,note:null,sent_qty:0,remaining_qty:qty
-    });
-    if(se)throw se;
     document.getElementById('inputSO').value='';
     document.getElementById('inputItem').value='';
     document.getElementById('inputQty').value='';
@@ -1165,21 +1152,20 @@ async function confirmStart(){
     showToast('Started: '+so+' / '+item);
     await loadAll();
 
-    // If Cutting → automatically start Part Pull as well (mandatory, no modal)
+    // If Cutting → ask about Part Pull
     if(team==='Cutting'){
+      // Check Part Pull not already active/done for this item
       const currentLine=lines.find(l=>l.so===so&&l.item===item);
-      const ALIVE=['active','paused','waiting','done'];
-      const ppExists=currentLine&&currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
-      if(!ppExists&&currentLine){
-        try{
-          await sb.from('stations').insert({
-            line_id:currentLine.id,grp:'Part Pull',state:'active',
-            started_at:new Date().toISOString(),elapsed_ms:0,
-            done_at:null,note:null,sent_qty:0,remaining_qty:qty
-          });
-          await loadAll();
-          showToast('✓ Part Pull auto-started','green');
-        }catch(err){console.error('Auto Part Pull error',err);showToast('Error auto-starting Part Pull','red');}
+      const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
+      const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
+      if(!ppActive&&!ppDone){
+        partPullPending={so,item,qty,lineId:currentLine?.id||lineId};
+        document.getElementById('partPullCtx').textContent=so+' / '+item+' — '+qty+' pcs';
+        document.getElementById('partPullGrid').innerHTML=`
+          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
+          <span class="cg-lbl">Item No</span><span class="cg-val">${item}</span>
+          <span class="cg-lbl">Qty</span><span class="cg-val big">${qty} pcs</span>`;
+        document.getElementById('partPullModal').classList.add('open');
       }
     }
   }catch(err){console.error(err);setSyncDot('error');showToast('Error starting','red');}
@@ -1221,12 +1207,6 @@ async function pauseJob(sid){
   catch(e){setSyncDot('error');showToast('Error','red');}
 }
 async function resumeJob(sid){
-  // Guard: do not resume a station that was already done
-  const j=jobs.find(x=>x.stationId===sid);
-  if(j&&j.state==='done'){
-    showToast('Cannot resume a completed station','red');
-    return;
-  }
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',sid);await loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
@@ -1311,191 +1291,128 @@ async function confirmTestComplete(){
 async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
   const add=j.state==='active'?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
-  const GATE_GROUPS=['Cutting','Part Pull'];
-  const C_TEAMS=['C1','C2','C3','C4'];
   setSyncDot('syncing');
   try{
-    // Mark station as done
-    await sb.from('stations').update({
-      state:'done',elapsed_ms:total,
-      done_at:nowStr(),sent_qty:sentQty
-    }).eq('id',sid);
+    // Build the "next station" params. For mark_complete, these are ignored
+    // server-side. Otherwise we always create a 'queue' row going from this
+    // group to whoever picks it up next (same convention as v1.6).
+    const totalQty = parseInt(j.totalQty)||0;
+    const nextIsPartial = sentQty < totalQty;
+
+    await rpcCall('rpc_done_station', {
+      p_station_id: sid,
+      p_elapsed_ms: total,
+      p_done_at: nowStr(),
+      p_sent_qty: sentQty,
+      p_mark_complete: !!markComplete,
+      p_next_state: 'queue',
+      p_next_grp: j.group,
+      p_next_sent: sentQty,
+      p_next_remaining: 0,
+      p_next_received: sentQty,
+      p_next_from_grp: j.group,
+      p_next_is_partial: nextIsPartial,
+      p_next_note: null,
+      p_client_op_id: newOpId()
+    });
 
     if(markComplete){
-      await sb.from('lines').update({fully_done:true}).eq('id',j.lineId);
       showToast('ORDER COMPLETE: '+j.so+' / '+j.item,'green');
-    } else if(GATE_GROUPS.includes(j.group)){
-      // Cutting or Part Pull done — re-fetch fresh state from Supabase
-      const {data:freshStations}=await sb.from('stations').select('*').eq('line_id',j.lineId);
-      const cuttingDone=freshStations&&freshStations.some(s=>s.grp==='Cutting'&&s.state==='done');
-      const partPullExists=freshStations&&freshStations.some(s=>s.grp==='Part Pull');
-      const partPullDone=freshStations&&freshStations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-      const bothDone=cuttingDone&&(!partPullExists||partPullDone);
-      // Always delete existing queue entries for this line to avoid duplicates
-      const existingQueues=freshStations.filter(s=>s.state==='queue');
-      for(const eq of existingQueues){
-        await sb.from('stations').delete().eq('id',eq.id);
-      }
-      // Always create a queue entry — locked state is handled in renderQueue
-      await sb.from('stations').insert({
-        line_id:j.lineId,grp:'Cutting',
-        state:'queue',started_at:new Date().toISOString(),
-        elapsed_ms:0,done_at:nowStr(),
-        note:null,sent_qty:sentQty,remaining_qty:0,
-        received_qty:sentQty,
-        from_grp:bothDone?(partPullExists?'Cutting+Part Pull':'Cutting'):j.group,
-        is_partial:sentQty<(parseInt(j.totalQty)||0)
-      });
-      if(bothDone){
-        showToast('✅ Cutting + Part Pull complete — Queue unlocked','green');
-      } else {
-        const missing=cuttingDone?'Part Pull':'Cutting';
-        showToast(shortGrp(j.group)+' done ✓ — Waiting for '+missing);
-      }
+    } else if(remaining>0){
+      // When the user kept some pcs at the station (the old "waiting" behavior
+      // outside Testing/Packing path) → create the local waiting row.
+      // This is a separate non-critical write; the main DONE has already
+      // succeeded atomically above.
+      try{
+        await sb.from('stations').insert({
+          line_id:j.lineId,grp:j.group,
+          state:'waiting',started_at:new Date().toISOString(),
+          elapsed_ms:0,done_at:null,
+          note:j.note||null,sent_qty:sentQty,remaining_qty:remaining,
+          received_qty:availableQty,is_partial:true
+        });
+      }catch(e){console.warn('waiting row insert failed (non-critical):', e);}
+      showToast(shortGrp(j.group)+' → Queue: '+sentQty+' pcs · '+remaining+' waiting here');
     } else {
-      // Normal flow (C1-C4, Testing/Packing) → queue as before
-      await sb.from('stations').insert({
-        line_id:j.lineId,grp:j.group,
-        state:'queue',started_at:new Date().toISOString(),
-        elapsed_ms:0,done_at:nowStr(),
-        note:null,sent_qty:sentQty,remaining_qty:0,
-        received_qty:sentQty,from_grp:j.group,
-        is_partial:sentQty<(parseInt(j.totalQty)||0)
-      });
-      if(remaining>0){
-        if(j.state==='waiting'){
-          await sb.from('stations').insert({
-            line_id:j.lineId,grp:j.group,
-            state:'waiting',started_at:new Date().toISOString(),
-            elapsed_ms:0,done_at:null,
-            note:j.note||null,sent_qty:sentQty,remaining_qty:remaining,
-            received_qty:availableQty,is_partial:true
-          });
-        } else {
-          await sb.from('stations').insert({
-            line_id:j.lineId,grp:j.group,
-            state:'waiting',started_at:new Date().toISOString(),
-            elapsed_ms:0,done_at:null,
-            note:j.note||null,sent_qty:sentQty,remaining_qty:remaining,
-            received_qty:availableQty,is_partial:true
-          });
-        }
-      }
-      showToast(shortGrp(j.group)+' → Queue: '+sentQty+' pcs'+(remaining>0?' · '+remaining+' waiting here':''));
+      showToast(shortGrp(j.group)+' → Queue: '+sentQty+' pcs');
     }
     await loadAll();
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error','red');}
+  }catch(err){
+    console.error(err);setSyncDot('error');
+    showToast('Error — will retry when back online / Loi','red');
+  }
 }
 
 // ── QUEUE — take ──────────────────────────────────────────────────────────────
-function selectTakeTeam(team){
-  document.getElementById('takeTeamSel').value=team;
-  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
-  event.target.classList.add('selected');
-  const qi=queueItems.find(x=>x.id===takeTargetId);
-  const so=qi?qi.so:'';
-  const item=qi?qi.item:'';
-  const qty=qi?qi.qty:'';
-  // Hide team buttons, show big confirm
-  document.getElementById('takeTeamBtns').style.display='none';
-  document.getElementById('takeConfirmBox').style.display='block';
-  document.getElementById('takeConfirmBox').innerHTML=`
-    <div style="text-align:center;padding:10px 0;">
-      <div style="font-size:13px;color:var(--txt2);margin-bottom:8px;">You are taking / Ban dang nhan:</div>
-      <div style="font-size:22px;font-weight:700;color:var(--blue);margin-bottom:4px;">${so}</div>
-      <div style="font-size:15px;color:var(--txt1);margin-bottom:4px;">${item}</div>
-      <div style="font-size:13px;color:var(--txt3);margin-bottom:16px;">${qty} pcs</div>
-      <div style="font-size:13px;color:var(--txt2);margin-bottom:6px;">Assigned to / Phan cong cho:</div>
-      <div style="font-size:28px;font-weight:800;color:#fff;background:var(--blue);padding:12px 24px;border-radius:var(--r-lg);display:inline-block;letter-spacing:1px;">${team}</div>
-      <div style="font-size:13px;color:var(--txt3);margin-top:14px;font-style:italic;">Confirm to proceed / Xac nhan de tiep tuc</div>
-    </div>`;
-  document.getElementById('takeFinalBtn').style.display='block';
-  document.getElementById('takeCancelTeamBtn').style.display='inline-block';
-}
+const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing'];
 
-function resetTakeModal(){
-  document.getElementById('takeTeamSel').value='';
-  document.getElementById('takeTeamBtns').style.display='grid';
-  document.getElementById('takeConfirmBox').style.display='none';
-  document.getElementById('takeFinalBtn').style.display='none';
-  document.getElementById('takeCancelTeamBtn').style.display='none';
-  document.querySelectorAll('.take-team-btn').forEach(b=>b.classList.remove('selected'));
+// Returns reason a team cannot take this queue item, or null if allowed.
+function teamBlockReason(line,team,qty){
+  if(!line)return null;
+  // Active/paused/waiting at this team — cannot send again
+  const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
+  if(aj)return 'already '+aj.state;
+  // Done at this team with the SAME qty — duplicate (different qty = back-order, allowed)
+  const ds=line.stations.find(s=>s.grp===team&&s.state==='done'&&(s.sent_qty||0)===qty);
+  if(ds)return 'done '+qty+' pcs at '+(ds.done_at||'?');
+  return null;
 }
 
 function openTakeModal(qid){
   const qi=queueItems.find(x=>x.id===qid);if(!qi)return;
   takeTargetId=qid;
   document.getElementById('takeCtx').textContent=qi.so+' / '+qi.item+' · '+qi.qty+' pcs from '+shortGrp(qi.fromGroup);
-  resetTakeModal();
+  const line=lines.find(l=>l.id===qi.lineId);
+  // Rebuild the team select with blocked teams marked
+  const sel=document.getElementById('takeTeamSel');
+  let opts='<option value="">-- Select your team --</option>';
+  ALL_TEAMS.forEach(t=>{
+    const reason=teamBlockReason(line,t,qi.qty);
+    if(reason){
+      opts+=`<option value="" disabled style="color:#aaa;">${t} — ✗ ${reason}</option>`;
+    } else {
+      opts+=`<option value="${t}">${t}</option>`;
+    }
+  });
+  sel.innerHTML=opts;
+  sel.value='';
   document.getElementById('takeModal').classList.add('open');
 }
 async function confirmTake(){
   const team=document.getElementById('takeTeamSel').value;
   if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
-  // Smart re-take check: allow partial flow but block true duplicates
+
+  // v1.7 — Safety net in case dropdown was bypassed somehow
   const line=lines.find(l=>l.id===qi.lineId);
-  if(line){
-    // Block if currently active/paused on this team
-    const activeOnTeam=line.stations.some(s=>s.grp===team&&(s.state==='active'||s.state==='paused'));
-    if(activeOnTeam){
-      showToast('🚫 '+team+' is already working on this item / '+team+' dang lam','red');
-      return;
-    }
-    // Quantity-based check: total work done + waiting + new should not exceed line qty
-    const totalQty=parseInt(line.qty)||0;
-    const doneTotal=line.stations.filter(s=>s.grp===team&&s.state==='done').reduce((a,s)=>a+(parseInt(s.sent_qty)||0),0);
-    const waitingTotal=line.stations.filter(s=>s.grp===team&&s.state==='waiting').reduce((a,s)=>a+((parseInt(s.received_qty)||0)-(parseInt(s.sent_qty)||0)),0);
-    const newQty=parseInt(qi.qty)||0;
-    if(totalQty>0&&(doneTotal+waitingTotal+newQty)>totalQty){
-      showToast('🚫 '+team+' already completed this item ('+doneTotal+'/'+totalQty+' pcs) / Da hoan thanh','red');
-      return;
-    }
+  const reason=teamBlockReason(line,team,qi.qty);
+  if(reason){
+    showWarn('red','Cannot send to this team / Khong the gui',
+      'Same SO+item+qty already at this team',
+      `<strong>${team}</strong> already has this item: <strong>${reason}</strong>.<br>Pick a different team. Back-order with different qty is allowed.`,
+      `<strong>${team}</strong> da co san pham nay. Chon nhom khac.`,
+      `<div class="modal-detail-row">Reason: <strong>${reason}</strong></div>`);
+    return;
   }
-  // Flow validation: C1-C4 can only take if both Cutting AND Part Pull are done
-  const C_TEAMS=['C1','C2','C3','C4'];
-  if(C_TEAMS.includes(team)){
-    const line=lines.find(l=>l.id===qi.lineId);
-    const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull');
-    const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-    if(partPullExists&&!cuttingDone){showToast('🔒 Cutting not done yet / Cutting henuz bitmedi','red');return;}
-    if(partPullExists&&!partPullDone){showToast('🔒 Part Pull not done yet / Part Pull henuz bitmedi','red');return;}
-  }
+
   closeModal('takeModal');
   setSyncDot('syncing');
   try{
-    await sb.from('stations').update({state:'taken'}).eq('id',takeTargetId);
-    // If a waiting station already exists for this team, merge into it instead of creating new
-    const lineForMerge=lines.find(l=>l.id===qi.lineId);
-    const existingWaiting=lineForMerge&&lineForMerge.stations.find(s=>s.grp===team&&s.state==='waiting');
-    if(existingWaiting){
-      // Add the new qty to the existing waiting station, switch to active
-      const newReceived=(parseInt(existingWaiting.received_qty)||0)+qi.qty;
-      const oldRemaining=parseInt(existingWaiting.remaining_qty)||0;
-      const newRemaining=oldRemaining+qi.qty;
-      await sb.from('stations').update({
-        state:'active',
-        started_at:new Date().toISOString(),
-        received_qty:newReceived,
-        remaining_qty:newRemaining,
-        is_partial:newReceived<qi.totalQty
-      }).eq('id',existingWaiting.id);
-    } else {
-      await sb.from('stations').insert({
-        line_id:qi.lineId,grp:team,
-        state:'active',started_at:new Date().toISOString(),
-        elapsed_ms:0,done_at:null,note:null,
-        sent_qty:0,remaining_qty:qi.qty,
-        received_qty:qi.qty,
-        is_partial:qi.qty<qi.totalQty,
-        from_grp:qi.fromGroup
-      });
-    }
+    await rpcCall('rpc_take_station', {
+      p_queue_id: takeTargetId,
+      p_team: team,
+      p_qty: qi.qty,
+      p_total_qty: qi.totalQty,
+      p_from_grp: qi.fromGroup,
+      p_client_op_id: newOpId()
+    });
     await loadAll();
     showToast(team+' picked up: '+qi.so+' / '+qi.item);
     takeTargetId=null;
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error','red');}
+  }catch(err){
+    console.error(err);setSyncDot('error');
+    showToast('Error — will retry / Loi','red');
+  }
 }
 
 // ── NOTES ─────────────────────────────────────────────────────────────────────
@@ -1535,7 +1452,34 @@ function getLineStatus(line){
   if(line.fully_done)return'Done';
   const aj=jobs.find(j=>j.lineId===line.id);
   if(aj)return aj.state==='paused'?'Paused':'In Progress';
+  // Check for queue rows on this line (it's waiting for someone to TAKE)
+  const inQueue=queueItems.find(q=>q.lineId===line.id);
+  if(inQueue)return'In Progress';
   return'Not Started';
+}
+
+// A line is "stuck/ghost" when: not fully_done, has no active/paused/waiting/queue
+// station, but has at least one done station. The system has lost track of it.
+function isLineStuck(line){
+  if(line.fully_done)return false;
+  const hasAlive=line.stations.some(s=>['active','paused','waiting','queue'].includes(s.state));
+  if(hasAlive)return false;
+  const hasDone=line.stations.some(s=>s.state==='done');
+  return hasDone;
+}
+
+function getStuckInfo(line){
+  // Returns the last done station — the "stuck point"
+  const dones=line.stations.filter(s=>s.state==='done');
+  if(!dones.length)return null;
+  // Sort by done_at desc (string compare works for 12h format only roughly,
+  // so also fall back to started_at)
+  const sorted=dones.slice().sort((a,b)=>{
+    const ad=a.done_at||'',bd=b.done_at||'';
+    if(ad!==bd)return bd.localeCompare(ad);
+    return (b.started_at||'').localeCompare(a.started_at||'');
+  });
+  return sorted[0];
 }
 function getTotalElapsed(line){
   const base=line.stations.reduce((a,s)=>a+(s.elapsed_ms||0),0);
@@ -1595,8 +1539,6 @@ function renderWorker(){
   cb.textContent=doneList.length;
   cb.className='queue-badge'+(doneList.length>0?' on':'');
   cb.style.background='var(--green)';
-  cb.style.cursor='pointer';
-  cb.onclick=function(e){e.stopPropagation();const tab=document.getElementById('completedTab');if(tab)tab.click();};
 
   const jl=document.getElementById('jobsList');
   if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';return;}
@@ -1606,9 +1548,7 @@ function renderWorker(){
   }
 
   jl.innerHTML=myJobs.map(j=>{
-    // Weekend = freeze the live timer (don't count weekend time)
-    const _isWE=(()=>{const d=new Date().getDay();return d===0||d===6;})();
-    const el=j.elapsed+(j.state==='active'&&j.startedAt&&!_isWE?Date.now()-j.startedAt:0);
+    const el=j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0);
     const isWaiting=j.state==='waiting';
     const isFinal=j.group===FINAL;
     const slCls=isWaiting?'sl-purple':j.state==='paused'?'sl-amber':'sl-green';
@@ -1678,12 +1618,8 @@ function renderWorker(){
 
 function renderDonePanel(){
   const dl=document.getElementById('doneList');
-  const searchC=(document.getElementById('completedSearch')?.value||'').trim().toUpperCase();
-  // Sort newest first
-  const sorted=[...doneList].sort((a,b)=>b.doneAt>a.doneAt?1:-1);
-  const filtered=searchC?sorted.filter(d=>d.so.includes(searchC)||d.item.toUpperCase().includes(searchC)):sorted;
-  if(!filtered.length){dl.innerHTML='<div class="empty-done">'+(searchC?'No results for "'+searchC+'"':'Nothing completed yet<br>Press DONE to see it here')+'</div>';return;}
-  dl.innerHTML=filtered.map(d=>{
+  if(!doneList.length){dl.innerHTML='<div class="empty-done">Nothing completed yet<br>Press DONE to see it here</div>';return;}
+  dl.innerHTML=doneList.map(d=>{
     const line=lines.find(l=>l.so===d.so&&l.item===d.item);
     const cs=line?getCurrentStation(line.id):null;
     let csHtml='';
@@ -1716,83 +1652,6 @@ function renderDonePanel(){
   }).join('');
 }
 
-// ── RENDER DAILY DATA ────────────────────────────────────────────────────────
-function renderDaily(){
-  const body=document.getElementById('dailyBody');
-  if(!body)return;
-  const today=new Date();
-  const todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-  const toLocalDate=utcStr=>{if(!utcStr)return'';const d=new Date(utcStr);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
-  document.getElementById('dailyDate').textContent=today.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
-  const TEAMS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
-
-  // Bug fix: done_at is stored as "8:12 AM" (time string, no date) so we can't filter by it.
-  // Sent Today = queue entries created today, attributed via from_grp (which team sent them).
-  // For Cutting/Part Pull queue entries the from_grp can be "Cutting", "Part Pull" or "Cutting+Part Pull"
-  // — we count it for both teams when it's the combined case.
-  const allQueues=lines.flatMap(l=>l.stations.filter(s=>s.state==='queue'));
-  const queuesToday=allQueues.filter(s=>toLocalDate(s.started_at)===todayStr);
-  const rows=TEAMS.map(team=>{
-    const allSt=lines.flatMap(l=>l.stations.filter(s=>s.grp===team));
-    // RECEIVED today = work the team STARTED today (active/paused/done/waiting started today, NOT queue records)
-    const received=allSt.filter(s=>
-      toLocalDate(s.started_at)===todayStr&&
-      (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
-    ).length;
-    // SENT today = queue entries today whose from_grp matches this team (handles "Cutting+Part Pull" combined case)
-    const sent=queuesToday.filter(q=>{
-      const fg=q.from_grp||'';
-      if(team==='Cutting'||team==='Part Pull'){
-        return fg===team||fg==='Cutting+Part Pull';
-      }
-      return fg===team;
-    }).length;
-    // ACTIVE NOW = currently being worked on (active+paused only, NO waiting)
-    const active=allSt.filter(s=>s.state==='active'||s.state==='paused').length;
-
-    const color=team==='Cutting'?'var(--blue)':team==='Part Pull'?'#7b1fa2':team==='Testing / Packing'?'var(--green)':'var(--blue-m)';
-
-    return `<div style="background:var(--bg1);border-radius:var(--r-lg);border:1px solid var(--bdr3);border-left:5px solid ${color};padding:14px 18px;display:flex;align-items:center;gap:0;">
-      <div style="width:160px;font-size:15px;font-weight:600;color:var(--txt1);">${team}</div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-        <div style="text-align:center;padding:10px;background:var(--blue-lt);border-radius:var(--r-md);">
-          <div style="font-size:26px;font-weight:700;color:var(--blue);">${received}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Received Today / Da nhan</div>
-        </div>
-        <div style="text-align:center;padding:10px;background:var(--green-lt);border-radius:var(--r-md);">
-          <div style="font-size:26px;font-weight:700;color:var(--green);">${sent}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Sent Today / Da gui</div>
-        </div>
-        <div style="text-align:center;padding:10px;background:var(--amber-lt);border-radius:var(--r-md);">
-          <div style="font-size:26px;font-weight:700;color:var(--amber);">${active}</div>
-          <div style="font-size:11px;color:var(--txt2);margin-top:2px;">Active Now / Dang lam</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Summary totals
-  const allStations=lines.flatMap(l=>l.stations);
-  const totalReceived=allStations.filter(s=>
-    toLocalDate(s.started_at)===todayStr&&
-    (s.state==='active'||s.state==='paused'||s.state==='done'||s.state==='waiting')
-  ).length;
-  const totalSent=allStations.filter(s=>s.state==='queue'&&toLocalDate(s.started_at)===todayStr).length;
-  const totalActive=allStations.filter(s=>s.state==='active'||s.state==='paused').length;
-  // PENDING = Queue + Waiting combined (work that is not actively being processed but is in the system)
-  const totalPending=allStations.filter(s=>s.state==='queue'||s.state==='waiting').length;
-
-  body.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
-      <div class="dash-stat"><div class="dash-stat-val">${totalReceived}</div><div class="dash-stat-lbl">Received Today / Da nhan hom nay</div></div>
-      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--green);">${totalSent}</div><div class="dash-stat-lbl">Sent Today / Da gui hom nay</div></div>
-      <div class="dash-stat"><div class="dash-stat-val" style="color:var(--amber);">${totalActive}</div><div class="dash-stat-lbl">Active Now / Dang lam</div></div>
-      <div class="dash-stat"><div class="dash-stat-val" style="color:#7b1fa2;">${totalPending}</div><div class="dash-stat-lbl">Pending (Queue+Waiting) / Dang cho</div></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">${rows}</div>`;
-}
-
 // ── RENDER QUEUE ──────────────────────────────────────────────────────────────
 function renderQueue(){
   const body=document.getElementById('queueBody');
@@ -1805,19 +1664,7 @@ function renderQueue(){
   }
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
-    // Lock check: ALIVE-only existence (taken/queue records do not count as "open")
-    const line=lines.find(l=>l.id===qi.lineId);
-    const ALIVE_Q=['active','paused','waiting','done'];
-    const cuttingExists=line&&line.stations.some(s=>s.grp==='Cutting'&&ALIVE_Q.includes(s.state));
-    const cuttingDone=line&&line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    const partPullExists=line&&line.stations.some(s=>s.grp==='Part Pull'&&ALIVE_Q.includes(s.state));
-    const partPullDone=line&&line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-    // Locked if either gate exists but is not done
-    const cuttingMissing=cuttingExists&&!cuttingDone;
-    const partPullMissing=partPullExists&&!partPullDone;
-    const isLocked=cuttingMissing||partPullMissing;
-    const lockReason=cuttingMissing?'Waiting: Cutting not done yet':(partPullMissing?'Waiting: Part Pull not done yet':'');
-    return `<div class="q-card" style="${isLocked?'opacity:0.7;':''}">
+    return `<div class="q-card">
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
@@ -1826,16 +1673,14 @@ function renderQueue(){
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
           · ${qi.queuedAt}
         </div>
-        ${isLocked?`<div style="margin-top:5px;font-size:11px;font-weight:600;color:var(--amber-dk);background:var(--amber-lt);padding:3px 9px;border-radius:8px;display:inline-block;">🔒 ${lockReason}</div>`:''}
       </div>
       <div class="q-qty-col">
         <div class="q-qty-n">${qi.qty}</div>
         <div class="q-qty-l">pcs</div>
       </div>
-      ${isLocked
-        ?`<button class="btn-take" style="background:#9099AA;cursor:not-allowed;" disabled title="${lockReason}"><span>LOCKED</span><span class="vn">Waiting</span></button>`
-        :`<button class="btn-take" onclick="openTakeModal('${qi.id}')"><span>TAKE</span><span class="vn">Nhan</span></button>`
-      }
+      <button class="btn-take" onclick="openTakeModal('${qi.id}')">
+        <span>TAKE</span><span class="vn">Nhan</span>
+      </button>
     </div>`;
   }).join('');
 }
@@ -1850,19 +1695,13 @@ function renderDash(){
     if(!soMap[l.so])soMap[l.so]=[];
     soMap[l.so].push(l);
   });
-  // Sort SO keys by most recent station activity (newest first)
-  const soKeys=Object.keys(soMap).sort((a,b)=>{
-    const getLatest=so=>Math.max(...(soMap[so]||[]).flatMap(l=>l.stations.map(s=>{
-      const t=s.started_at||s.done_at||'';
-      return t?new Date(t).getTime():0;
-    })).concat([0]));
-    return getLatest(b)-getLatest(a);
-  });
+  const soKeys=Object.keys(soMap);
   document.getElementById('ds-so').textContent=soKeys.length;
   document.getElementById('ds-lines').textContent=lines.length;
   document.getElementById('ds-active').textContent=lines.filter(l=>getLineStatus(l)==='In Progress').length;
   document.getElementById('ds-paused').textContent=lines.filter(l=>getLineStatus(l)==='Paused').length;
   document.getElementById('ds-done').textContent=lines.filter(l=>l.fully_done).length;
+
   const body=document.getElementById('dashBody');
   if(!soKeys.length){body.innerHTML='<div class="empty-dash">No orders yet</div>';return;}
   let html='';
@@ -1897,15 +1736,13 @@ function renderDash(){
       const allSt=l.stations.filter(s=>!['taken'].includes(s.state));
       const flowHtml=allSt.length?allSt.map((s,idx)=>{
         let cls='fb-active';
-        let labelSuffix='';
-        if(s.state==='done'){cls='fb-done';labelSuffix=' ✓';}
-        else if(s.state==='paused'){cls='fb-paused';labelSuffix=' ⏸';}
-        else if(s.state==='waiting'){cls='fb-waiting';labelSuffix=' ⏳';}
-        else if(s.state==='queue'){cls='fb-queue';labelSuffix=' → Queue';}
-        else if(s.state==='active'){cls='fb-active';labelSuffix=' ⚡';}
+        if(s.state==='done')cls='fb-done';
+        else if(s.state==='paused')cls='fb-paused';
+        else if(s.state==='waiting')cls='fb-waiting';
+        else if(s.state==='queue')cls='fb-queue';
         const arrow=idx<allSt.length-1?'<span class="flow-arr">→</span>':'';
         const qtyInfo=s.sent_qty?` (${s.sent_qty})`:'';
-        return `<div class="flow-step"><span class="fb ${cls}"><span class="fb-dot"></span>${shortGrp(s.grp)}${labelSuffix}${qtyInfo}</span>${arrow}</div>`;
+        return `<div class="flow-step"><span class="fb ${cls}"><span class="fb-dot"></span>${shortGrp(s.grp)}${qtyInfo}</span>${arrow}</div>`;
       }).join(''):'<span style="font-size:12px;color:var(--txt3);">No activity</span>';
       const allNotes=l.stations.filter(s=>s.note).map(s=>`${shortGrp(s.grp)}: ${s.note}`);
       const notesHtml=allNotes.length?`<div class="dash-note" title="${allNotes.join(' | ')}">📝 ${allNotes.join(' · ')}</div>`:'';
@@ -1940,7 +1777,6 @@ function checkAdminPw(){
   const pw=document.getElementById('adminPw').value;
   if(pw===ADMIN_PW){
     adminLoggedIn=true;
-    try{sessionStorage.setItem('shaxon_admin_ok','1');}catch(e){}
     document.getElementById('adminLogin').style.display='none';
     document.getElementById('adminPanel').classList.add('on');
     renderAdmin();
@@ -1950,86 +1786,34 @@ function checkAdminPw(){
     setTimeout(()=>document.getElementById('adminErr').style.display='none',2000);
   }
 }
-function checkRememberedAdmin(){
-  try{
-    if(sessionStorage.getItem('shaxon_admin_ok')==='1'){
-      adminLoggedIn=true;
-      const login=document.getElementById('adminLogin');
-      const panel=document.getElementById('adminPanel');
-      if(login)login.style.display='none';
-      if(panel)panel.classList.add('on');
-    }
-  }catch(e){}
-}
 function adminLogout(){
   adminLoggedIn=false;
-  try{sessionStorage.removeItem('shaxon_admin_ok');}catch(e){}
   document.getElementById('adminLogin').style.display='flex';
   document.getElementById('adminPanel').classList.remove('on');
   document.getElementById('adminPw').value='';
 }
-function toggleAdminSection(id){
-  const el=document.getElementById(id);
-  const arrow=document.getElementById(id+'-arrow');
-  if(!el)return;
-  const isOpen=el.style.display!=='none';
-  el.style.display=isOpen?'none':'block';
-  if(arrow)arrow.textContent=isOpen?'▼':'▲';
-}
-
-function exportNotesCSV(){
-  // Notu olan tum aktif (active/paused/waiting) isleri CSV olarak indir
-  // jobs zaten rebuildJobs'ta sadece bu state'leri iceriyor
-  const withNotes=jobs.filter(j=>j.note&&String(j.note).trim()!=='');
-  if(!withNotes.length){
-    showToast('No notes to export / Khong co ghi chu','amber');
-    return;
-  }
-  // SO -> Team -> Item order
-  const TEAM_ORDER={'Cutting':1,'Part Pull':2,'C1':3,'C2':4,'C3':5,'C4':6,'Testing / Packing':7};
-  const sorted=withNotes.slice().sort((a,b)=>{
-    if(a.so!==b.so)return a.so.localeCompare(b.so);
-    const ta=TEAM_ORDER[a.group]||99,tb=TEAM_ORDER[b.group]||99;
-    if(ta!==tb)return ta-tb;
-    return a.item.localeCompare(b.item);
-  });
-  // CSV escape: tirnak, virgul, satir sonu varsa cift tirnak icine al, icteki tirnaklari iki kat yap
-  const esc=v=>{
-    const s=v==null?'':String(v);
-    return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
-  };
-  const headers=['SO No','Item No','Qty','Team','State','Note'];
-  const linesOut=[headers.join(',')];
-  sorted.forEach(j=>{
-    linesOut.push([
-      esc(j.so),
-      esc(j.item),
-      esc((j.displayQty||j.totalQty)+' pcs'),
-      esc(j.group),
-      esc(j.state),
-      esc(j.note)
-    ].join(','));
-  });
-  // UTF-8 BOM ekle ki Excel Turkce/Vietnamese karakterleri dogru gostersin
-  const csv='\ufeff'+linesOut.join('\r\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const d=new Date();
-  const fn='shaxon-notes-'+d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'.csv';
-  const a=document.createElement('a');
-  a.href=url;a.download=fn;
-  document.body.appendChild(a);a.click();
-  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
-  showToast('Exported '+withNotes.length+' notes / Da xuat','green');
-}
-
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
-  const adminQ=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
-  const filterFn=x=>!adminQ||(x.so&&x.so.toUpperCase().includes(adminQ))||(x.item&&x.item.toUpperCase().includes(adminQ));
+  // Stuck/ghost lines section (most urgent)
+  const stuckLines=lines.filter(isLineStuck);
+  const stuckRows=stuckLines.map(l=>{
+    const info=getStuckInfo(l);
+    const stuckQty=info?(info.sent_qty||parseInt(l.qty)||0):(parseInt(l.qty)||0);
+    const stuckAt=info?shortGrp(info.grp):'?';
+    const stuckTime=info?(info.done_at||'—'):'—';
+    return `<tr class="row-stuck-admin">
+      <td>${l.so}</td>
+      <td class="item-num" title="${l.item}">${l.item}</td>
+      <td>${stuckQty} pcs</td>
+      <td><span class="ob ob-stuck"><span class="ob-dot"></span>after ${stuckAt}</span></td>
+      <td style="font-size:12px;color:var(--txt2);">${stuckTime}</td>
+      <td><button class="btn-recover-row" onclick="recoverStuck('${l.id}')">♻ Recover</button></td>
+    </tr>`;
+  }).join('');
+
   // Active jobs section
-  const activeRows=jobs.filter(filterFn).map(j=>`<tr>
+  const activeRows=jobs.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -2041,47 +1825,41 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=queueItems.filter(filterFn).map(qi=>`<tr>
+  const queueRows=queueItems.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const completedRows=lines.filter(l=>l.fully_done&&filterFn(l)).map(l=>`<tr>
+  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
   </tr>`).join('');
 
-  const autoOpen=!!adminQ;
   body.innerHTML=`
+    ${stuckLines.length?`<div class="admin-section admin-section-stuck">
+      <div class="admin-section-hdr" style="background:#FFF4F4;color:var(--red-dk);display:flex;align-items:center;gap:8px;">
+        <span style="font-size:15px;">⚠️</span>
+        <span>Stuck / Ghost Items (${stuckLines.length})</span>
+        <span style="font-weight:400;font-size:11px;opacity:.8;">— lost from production flow</span>
+        <div style="flex:1;"></div>
+        ${stuckLines.length>1?`<button class="btn-recover-all" style="font-size:11px;padding:5px 11px;" onclick="recoverAllStuck()">♻ Recover All</button>`:''}
+      </div>
+      <table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Stuck Point</th><th>Last Done</th><th>Action</th></tr></thead><tbody>${stuckRows}</tbody></table>
+    </div>`:''}
     <div class="admin-section">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-active')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-        <span>Active Jobs (${jobs.filter(filterFn).length} shown / ${jobs.length} total)</span>
-        <span id="sec-active-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
-      </div>
-      <div id="sec-active" style="display:${autoOpen?'block':'none'};">
-        ${jobs.filter(filterFn).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
-      </div>
+      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
+      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-queue')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-        <span>Queue (${queueItems.filter(filterFn).length} shown / ${queueItems.length} total)</span>
-        <span id="sec-queue-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
-      </div>
-      <div id="sec-queue" style="display:${autoOpen?'block':'none'};">
-        ${queueItems.filter(filterFn).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
-      </div>
+      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
+      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
     </div>
     <div class="admin-section">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('sec-completed')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-        <span>Completed Orders (${lines.filter(l=>l.fully_done&&filterFn(l)).length} shown / ${lines.filter(l=>l.fully_done).length} total)</span>
-        <span id="sec-completed-arrow" style="font-size:12px;transition:transform .2s;">${autoOpen?'▲':'▼'}</span>
-      </div>
-      <div id="sec-completed" style="display:${autoOpen?'block':'none'};">
-        ${lines.filter(l=>l.fully_done&&filterFn(l)).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
-      </div>
+      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
+      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
     </div>
     <div class="admin-section">
       <div class="admin-section-hdr">⏱ Shift Settings / Cai dat ca lam viec</div>
@@ -2102,67 +1880,6 @@ function renderAdmin(){
           ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
           🔁 For overtime, just extend the end time here.
         </div>
-      </div>
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🔄 SAP Sales Order Sync</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Paste open SO numbers from SAP below (one per line). The system will find all <strong>S0XXXXX</strong> orders not in this list and delete them.
-          Orders not starting with <strong>S0</strong> will not be touched.
-        </div>
-        <textarea id="soSyncInput" rows="8" style="width:100%;padding:10px 12px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--mono);color:var(--txt1);background:var(--bg1);outline:none;resize:vertical;" placeholder="0732584&#10;0808648&#10;0808811&#10;..."></textarea>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button onclick="soSyncPreview()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Preview Changes</button>
-          <span style="font-size:12px;color:var(--txt3);">Review before deleting</span>
-        </div>
-        <div id="soSyncResult" style="display:none;"></div>
-      </div>
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🔧 Fix Legacy Queue (Merge Cutting + Part Pull)</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Finds queue items where both Cutting and Part Pull are done but appear as separate entries. Merges them into one unlocked entry.
-        </div>
-        <button onclick="fixLegacyQueue()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue-lt);color:var(--blue-dk);border:1px solid var(--blue-m);border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔧 Fix Legacy Queue Entries</button>
-        <div id="fixLegacyResult" style="display:none;"></div>
-      </div>
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🧟 Clean Stuck Cutting / Part Pull (Zombie)</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Finds Cutting/Part Pull stations stuck as <strong>active/paused/waiting</strong> when they should not be:
-          <br>• A C1-C4 team has already started or finished the same item
-          <br>• The item is already marked as completed
-          <br>Marks them as <strong>taken</strong> (hidden, history kept).
-        </div>
-        <button onclick="findZombies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧟 Find Zombies</button>
-        <div id="zombieResult" style="display:none;"></div>
-      </div>
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🔍 Data Consistency Check / Kiem tra du lieu</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Finds lines where data state is contradictory:
-          <br>• <strong>fully_done=true</strong> but Test/Pack is still <strong>paused/active/waiting</strong>
-          <br>• Stations with both <strong>state=paused/active</strong> AND <strong>done_at</strong> set
-          <br>Lists for manual review. You decide: mark complete or reopen.
-        </div>
-        <button onclick="findInconsistencies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔍 Find Inconsistencies</button>
-        <div id="inconsistencyResult" style="display:none;"></div>
-      </div>
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🧹 Clean Old Completed Orders</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Deletes completed orders older than <strong>10 business days</strong>. Active and in-progress orders are never touched.
-        </div>
-        <button onclick="cleanOldCompleted()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid var(--amber);border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧹 Clean Old Completed (10 business days)</button>
-        <div id="cleanResult" style="display:none;"></div>
       </div>
     </div>
     <div class="admin-section">
@@ -2193,436 +1910,34 @@ async function confirmAdminDelete(){
   setSyncDot('syncing');
   try{
     if(adminDelType==='station'){
-      // Delete ALL stations for this line + the line itself
+      // Get the station before deleting to know sent_qty
+      const delStation=jobs.find(j=>j.stationId===adminDelId)||queueItems.find(q=>q.id===adminDelId);
+      await sb.from('stations').delete().eq('id',adminDelId);
+      // Also find and fix any waiting station for same line
       if(adminDelLineId){
-        await sb.from('stations').delete().eq('line_id',adminDelLineId);
-        await sb.from('lines').delete().eq('id',adminDelLineId);
-      } else {
-        await sb.from('stations').delete().eq('id',adminDelId);
+        const waitingSt=lines.find(l=>l.id===adminDelLineId)?.stations?.find(s=>s.state==='waiting');
+        if(waitingSt){
+          // Reset waiting station — delete it so cutting shows clean
+          await sb.from('stations').delete().eq('id',waitingSt.id);
+        }
+        // Also delete queue entries for this line
+        const line=lines.find(l=>l.id===adminDelLineId);
+        if(line){
+          const queueSts=line.stations.filter(s=>s.state==='queue');
+          for(const qs of queueSts){
+            await sb.from('stations').delete().eq('id',qs.id);
+          }
+        }
       }
     } else if(adminDelType==='line'){
       await sb.from('stations').delete().eq('line_id',adminDelId);
       await sb.from('lines').delete().eq('id',adminDelId);
     }
     await loadAll();
-    showToast('Deleted — sync updated','green');
+    showToast('Deleted — sync updated / Da xoa va cap nhat','green');
   }catch(err){console.error(err);setSyncDot('error');showToast('Error deleting','red');}
   adminDelId=null;adminDelType=null;adminDelLineId=null;
 }
-// ── SO SYNC ──────────────────────────────────────────────────────────────────
-function normalizeSO(val){
-  if(val===null||val===undefined)return'';
-  return String(val).replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\D/g,'');
-}
-// A line is "truly finished" only if all stations are done/taken (no queue/active/paused/waiting left)
-function isLineTrulyFinished(l){
-  if(!l.stations||!l.stations.length)return false;
-  return l.stations.every(s=>s.state==='done'||s.state==='taken');
-}
-function soSyncPreview(){
-  const raw=document.getElementById('soSyncInput').value;
-  if(!raw.trim()){showToast('Paste SO list first','red');return;}
-  // Parse pasted lines → build set of valid S0XXXXX keys
-  const sapNums=raw.split(/[\n\r,;\t]+/).map(s=>s.trim()).filter(Boolean);
-  // Build a set of all SO values as-is from SAP list
-  const validSOs=new Set(sapNums.map(normalizeSO).filter(s=>s));
-  // Find active lines NOT in SAP list (completed lines always kept)
-  const toDelete=lines.filter(l=>!isLineTrulyFinished(l)&&!validSOs.has(normalizeSO(l.so)));
-  const result=document.getElementById('soSyncResult');
-  if(!toDelete.length){
-    result.style.display='block';
-    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ All S0 orders in system match SAP list. Nothing to delete.</div>`;
-    return;
-  }
-  const rows=toDelete.map(l=>`<tr>
-    <td style="font-weight:600;color:var(--red);">${l.so}</td>
-    <td>${l.item}</td>
-    <td>${l.qty}</td>
-    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${l.fully_done?'var(--green-lt)':'var(--amber-lt)'};color:${l.fully_done?'#1b5e20':'var(--amber-dk)'};">${l.fully_done?'Complete':'Active'}</span></td>
-  </tr>`).join('');
-  result.style.display='block';
-  result.innerHTML=`
-    <div style="background:var(--red-lt);border:1px solid #FFCDD2;border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--red-dk);">
-      ⚠️ <strong>${toDelete.length} line(s)</strong> from <strong>${[...new Set(toDelete.map(l=>l.so))].length} SO(s)</strong> will be deleted — not found in SAP list.
-    </div>
-    <table class="admin-table" style="margin-bottom:12px;">
-      <thead><tr><th>Sales Order</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <button onclick="soSyncExecute()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete These Orders</button>`;
-  window._soSyncPending=[...new Set(toDelete.map(l=>l.so))];
-}
-
-async function soSyncExecute(){
-  const soList=window._soSyncPending||[];
-  if(!confirm('Delete '+soList.length+' sales order(s) from system? This cannot be undone.'))return;
-  setSyncDot('syncing');
-  try{
-    for(const so of soList){
-      const soLines=lines.filter(l=>l.so===so);
-      for(const line of soLines){
-        await sb.from('stations').delete().eq('line_id',line.id);
-        await sb.from('lines').delete().eq('id',line.id);
-      }
-    }
-    await loadAll();
-    document.getElementById('soSyncResult').style.display='none';
-    document.getElementById('soSyncInput').value='';
-    showToast('✅ Deleted '+soList.length+' SO(s) from system','green');
-    renderAdmin();
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error during sync','red');}
-}
-
-async function fixLegacyQueue(){
-  const result=document.getElementById('fixLegacyResult');
-  setSyncDot('syncing');
-  let fixed=0;
-  try{
-    // Find all lines that have BOTH Cutting and Part Pull done
-    // AND have separate queue entries for each
-    for(const line of lines){
-      const stations=line.stations;
-      const cuttingDone=stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-      const partPullDone=stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-      const queueStations=stations.filter(s=>s.state==='queue');
-      // If both done and multiple queue entries exist → consolidate
-      if(cuttingDone&&partPullDone&&queueStations.length>1){
-        // Delete all existing queue entries for this line
-        for(const qs of queueStations){
-          await sb.from('stations').delete().eq('id',qs.id);
-        }
-        // Create one consolidated unlocked entry
-        const qty=queueStations[0].received_qty||queueStations[0].sent_qty||parseInt(line.qty)||0;
-        await sb.from('stations').insert({
-          line_id:line.id,grp:'Cutting',
-          state:'queue',started_at:new Date().toISOString(),
-          elapsed_ms:0,done_at:new Date().toISOString(),
-          note:null,sent_qty:qty,remaining_qty:0,
-          received_qty:qty,from_grp:'Cutting+Part Pull',
-          is_partial:false
-        });
-        fixed++;
-      } else if(cuttingDone&&partPullDone&&queueStations.length===1){
-        // Already one entry but from_grp might be wrong — update it
-        const qs=queueStations[0];
-        if(qs.from_grp!=='Cutting+Part Pull'){
-          await sb.from('stations').update({from_grp:'Cutting+Part Pull'}).eq('id',qs.id);
-          fixed++;
-        }
-      }
-    }
-    await loadAll();
-    result.style.display='block';
-    result.innerHTML=`<div style="color:var(--green);font-size:13px;">✅ Fixed ${fixed} queue entry/entries.</div>`;
-    showToast('✅ Fixed '+fixed+' legacy queue entries','green');
-  }catch(err){
-    console.error(err);setSyncDot('error');
-    showToast('Error fixing queue','red');
-  }
-}
-
-function getBusinessDaysAgo(days){
-  const date=new Date();
-  let count=0;
-  while(count<days){
-    date.setDate(date.getDate()-1);
-    const dow=date.getDay();
-    if(dow!==0&&dow!==6)count++;
-  }
-  return date.toISOString().slice(0,10);
-}
-
-// ── ZOMBIE CLEANER ──────────────────────────────────────────────────────────
-function detectZombies(){
-  const ALIVE=['active','paused','waiting'];
-  const C_TEAMS=['C1','C2','C3','C4'];
-  const FINAL_TEAM='Testing / Packing';
-  const zombies=[];
-  for(const line of lines){
-    const sts=line.stations||[];
-    // Has any C-team or Testing station ever been started or done?
-    const cOrTestingActivity=sts.some(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&['active','paused','waiting','done','taken'].includes(s.state));
-    // Is the line marked complete?
-    const isComplete=line.fully_done===true;
-
-    // Type A: Stuck Cutting/Part Pull stations
-    sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&ALIVE.includes(s.state)).forEach(s=>{
-      let reason=null;
-      if(isComplete){
-        reason='Item already completed';
-      } else if(cOrTestingActivity){
-        reason='C1-C4 or Testing already worked on this item';
-      }
-      if(reason){
-        zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:reason});
-      }
-    });
-
-    // Type B: Same team duplicate (e.g. C4 done + C4 active again)
-    const allTeams=['Cutting','Part Pull','C1','C2','C3','C4',FINAL_TEAM];
-    for(const team of allTeams){
-      const teamStations=sts.filter(s=>s.grp===team);
-      const hasDone=teamStations.some(s=>s.state==='done');
-      if(hasDone){
-        teamStations.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
-          if(!zombies.some(z=>z.stationId===s.id)){
-            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:team+' already finished this item once'});
-          }
-        });
-      }
-    }
-
-    // Type C: Item is fully_done but stations still alive
-    // EXCEPT: if it's Test/Pack and has done_at (was previously completed), this is a known
-    // pause/resume edge case — handled separately by the consistency tool, not as zombie.
-    if(isComplete){
-      sts.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
-        if(!zombies.some(z=>z.stationId===s.id)){
-          // Skip Test/Pack with done_at — that's a separate consistency issue, not a zombie
-          if(s.grp===FINAL_TEAM&&s.done_at)return;
-          zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Item already completed'});
-        }
-      });
-    }
-
-    // Type D: Cutting/Part Pull started AFTER a C-team or Test/Pack started — order reversed
-    // Earliest started_at among C-teams or Test/Pack
-    const downstreamStarts=sts
-      .filter(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&s.started_at)
-      .map(s=>new Date(s.started_at).getTime())
-      .filter(t=>!isNaN(t));
-    if(downstreamStarts.length){
-      const earliestDownstream=Math.min(...downstreamStarts);
-      // Find Cutting/Part Pull stations started AFTER this downstream start
-      sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.started_at).forEach(s=>{
-        const ts=new Date(s.started_at).getTime();
-        if(!isNaN(ts)&&ts>earliestDownstream){
-          // Skip taken (already cleaned) and already-detected
-          if(s.state==='taken')return;
-          if(zombies.some(z=>z.stationId===s.id))return;
-          zombies.push({
-            stationId:s.id,lineId:line.id,
-            so:line.so,item:line.item,qty:line.qty,
-            grp:s.grp,state:s.state,
-            reason:s.grp+' started AFTER C-team/Test (wrong order)'
-          });
-        }
-      });
-    }
-  }
-  return zombies;
-}
-
-function findZombies(){
-  const result=document.getElementById('zombieResult');
-  const zombies=detectZombies();
-  if(!zombies.length){
-    result.style.display='block';
-    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No zombie stations found. System is clean.</div>`;
-    return;
-  }
-  // Group by reason for cleaner display
-  const rows=zombies.map(z=>`<tr>
-    <td style="font-weight:600;color:var(--blue);">${z.so}</td>
-    <td class="item-num" title="${z.item}">${z.item}</td>
-    <td>${z.qty}</td>
-    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${z.grp==='Cutting'?'var(--blue-lt)':'#F3E5F5'};color:${z.grp==='Cutting'?'var(--blue-dk)':'#6a1b9a'};">${z.grp}</span></td>
-    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${z.state==='paused'?'var(--amber-lt)':z.state==='active'?'var(--green-lt)':'#F3E5F5'};color:${z.state==='paused'?'var(--amber-dk)':z.state==='active'?'#1b5e20':'#6a1b9a'};">${z.state}</span></td>
-    <td style="font-size:11px;color:var(--txt2);font-style:italic;">${z.reason}</td>
-  </tr>`).join('');
-  // Counts
-  const completedCount=zombies.filter(z=>z.reason==='Item already completed').length;
-  const cTeamCount=zombies.filter(z=>z.reason==='C1-C4 or Testing already worked on this item').length;
-  result.style.display='block';
-  result.innerHTML=`
-    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
-      🧟 <strong>${zombies.length} zombie station(s) found:</strong>
-      <br>${completedCount>0?'• '+completedCount+' on already completed items':''}
-      ${cTeamCount>0?'<br>• '+cTeamCount+' where C1-C4 or Testing already started':''}
-    </div>
-    <table class="admin-table" style="margin-bottom:12px;">
-      <thead><tr><th style="width:100px;">SO</th><th>Item</th><th style="width:70px;">Qty</th><th style="width:80px;">Station</th><th style="width:80px;">State</th><th>Reason</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <button onclick="cleanZombies()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">✓ Mark All ${zombies.length} as Taken (Clean)</button>`;
-  window._zombiesPending=zombies.map(z=>z.stationId);
-}
-
-async function cleanZombies(){
-  const ids=window._zombiesPending||[];
-  if(!ids.length){showToast('Nothing to clean','red');return;}
-  if(!confirm('Mark '+ids.length+' zombie station(s) as taken?\nThey will disappear from active jobs but history is kept.\n\nXoa '+ids.length+' tram zombie? Lich su giu lai.'))return;
-  setSyncDot('syncing');
-  try{
-    let cleaned=0;
-    for(const sid of ids){
-      // For paused jobs, save the elapsed time so it does not get lost
-      const j=jobs.find(x=>x.stationId===sid);
-      const update={state:'taken'};
-      if(j&&j.state==='active'&&j.startedAt){
-        update.elapsed_ms=j.elapsed+(Date.now()-j.startedAt);
-      }
-      await sb.from('stations').update(update).eq('id',sid);
-      cleaned++;
-    }
-    await loadAll();
-    document.getElementById('zombieResult').style.display='none';
-    showToast('✅ Cleaned '+cleaned+' zombie station(s) / Da don '+cleaned+' tram','green');
-    window._zombiesPending=null;
-    renderAdmin();
-  }catch(err){
-    console.error('Zombie clean error:',err);
-    setSyncDot('error');
-    showToast('Error cleaning zombies / Loi','red');
-  }
-}
-
-// ── DATA CONSISTENCY CHECK ──────────────────────────────────────────────────
-function detectInconsistencies(){
-  const FINAL='Testing / Packing';
-  const ALIVE=['active','paused','waiting'];
-  const issues=[];
-  for(const line of lines){
-    const sts=line.stations||[];
-    // Issue 1: fully_done=true but Test/Pack alive
-    if(line.fully_done){
-      const aliveTP=sts.filter(s=>s.grp===FINAL&&ALIVE.includes(s.state));
-      aliveTP.forEach(s=>{
-        issues.push({
-          type:'fully_done_but_alive',
-          stationId:s.id,lineId:line.id,
-          so:line.so,item:line.item,qty:line.qty,
-          grp:s.grp,state:s.state,
-          done_at:s.done_at,sent:s.sent_qty,
-          fully_done:line.fully_done,
-          description:'Line marked complete but '+s.grp+' is still '+s.state
-        });
-      });
-    }
-    // Issue 2: ALIVE state but done_at is set (resumed done station)
-    sts.forEach(s=>{
-      if(ALIVE.includes(s.state)&&s.done_at){
-        // Skip if already added from Issue 1
-        if(issues.some(i=>i.stationId===s.id))return;
-        issues.push({
-          type:'alive_but_done_at_set',
-          stationId:s.id,lineId:line.id,
-          so:line.so,item:line.item,qty:line.qty,
-          grp:s.grp,state:s.state,
-          done_at:s.done_at,sent:s.sent_qty,
-          fully_done:line.fully_done,
-          description:s.grp+' is '+s.state+' but has done_at='+s.done_at
-        });
-      }
-    });
-  }
-  return issues;
-}
-
-function findInconsistencies(){
-  const result=document.getElementById('inconsistencyResult');
-  const issues=detectInconsistencies();
-  if(!issues.length){
-    result.style.display='block';
-    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No data inconsistencies found.</div>`;
-    return;
-  }
-  const rows=issues.map((iss,idx)=>`<tr>
-    <td style="font-weight:600;color:var(--blue);">${iss.so}</td>
-    <td class="item-num" title="${iss.item}">${iss.item}</td>
-    <td>${iss.qty}</td>
-    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--amber-lt);color:var(--amber-dk);">${iss.grp}</span></td>
-    <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--bg2);color:var(--txt2);">${iss.state}</span></td>
-    <td style="font-size:11px;color:var(--txt2);">${iss.description}</td>
-    <td style="display:flex;gap:4px;flex-wrap:wrap;">
-      <button onclick="fixInconsistency(${idx},'complete')" style="padding:4px 8px;font-size:11px;background:var(--green-lt);color:#1b5e20;border:1px solid var(--green-bdr);border-radius:5px;cursor:pointer;" title="Mark as completed">✓ Done</button>
-      <button onclick="fixInconsistency(${idx},'reopen')" style="padding:4px 8px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid var(--amber);border-radius:5px;cursor:pointer;" title="Reopen (clear done_at, fully_done=false)">↻ Reopen</button>
-    </td>
-  </tr>`).join('');
-  result.style.display='block';
-  result.innerHTML=`
-    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
-      🔍 <strong>${issues.length} inconsistency/inconsistencies found.</strong>
-      <br>For each: <strong>✓ Done</strong> = the work IS finished (mark station as done) ·
-      <strong>↻ Reopen</strong> = the work continues (clear done_at, fully_done=false)
-    </div>
-    <table class="admin-table" style="margin-bottom:8px;">
-      <thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Station</th><th>State</th><th>Issue</th><th>Action</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  window._inconsistenciesPending=issues;
-}
-
-async function fixInconsistency(idx,action){
-  const issues=window._inconsistenciesPending||[];
-  const iss=issues[idx];
-  if(!iss){showToast('Issue not found','red');return;}
-  const label=action==='complete'?'mark this station as DONE':'reopen this work (clear done_at)';
-  if(!confirm('Will '+label+'.\n\nSO: '+iss.so+'\nItem: '+iss.item+'\nStation: '+iss.grp+'\n\nProceed?'))return;
-  setSyncDot('syncing');
-  try{
-    if(action==='complete'){
-      // Mark station as done, keep done_at, set fully_done=true if it's Test/Pack
-      const j=jobs.find(x=>x.stationId===iss.stationId);
-      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
-      await sb.from('stations').update({
-        state:'done',
-        elapsed_ms:elapsed,
-        done_at:iss.done_at||nowStr()
-      }).eq('id',iss.stationId);
-      // If Test/Pack, ensure line is fully_done
-      if(iss.grp==='Testing / Packing'){
-        await sb.from('lines').update({fully_done:true}).eq('id',iss.lineId);
-      }
-      showToast('Marked as done','green');
-    } else if(action==='reopen'){
-      // Clear done_at, ensure state is paused (so worker can resume), set fully_done=false
-      await sb.from('stations').update({
-        done_at:null,
-        state:iss.state==='active'?'active':'paused'
-      }).eq('id',iss.stationId);
-      await sb.from('lines').update({fully_done:false}).eq('id',iss.lineId);
-      showToast('Reopened — done_at cleared','green');
-    }
-    await loadAll();
-    findInconsistencies(); // refresh list
-  }catch(err){
-    console.error('Fix error:',err);
-    setSyncDot('error');
-    showToast('Fix failed','red');
-  }
-}
-
-async function cleanOldCompleted(){
-  const cutoff=getBusinessDaysAgo(10);
-  const oldLines=lines.filter(l=>{
-    if(!l.fully_done)return false;
-    // Find the latest done_at across all stations
-    const doneDates=l.stations.filter(s=>s.done_at).map(s=>s.done_at.slice(0,10));
-    if(!doneDates.length)return false;
-    const latest=doneDates.sort().pop();
-    return latest<cutoff;
-  });
-  if(!oldLines.length){
-    document.getElementById('cleanResult').style.display='block';
-    document.getElementById('cleanResult').innerHTML='<div style="color:var(--green);font-size:13px;">✅ No completed orders older than 10 business days found.</div>';
-    return;
-  }
-  if(!confirm('Delete '+oldLines.length+' completed order(s) older than 10 business days? Cannot be undone.'))return;
-  setSyncDot('syncing');
-  try{
-    for(const line of oldLines){
-      await sb.from('stations').delete().eq('line_id',line.id);
-      await sb.from('lines').delete().eq('id',line.id);
-    }
-    await loadAll();
-    showToast('✅ Deleted '+oldLines.length+' old completed order(s)','green');
-    document.getElementById('cleanResult').style.display='block';
-    document.getElementById('cleanResult').innerHTML='<div style="color:var(--green);font-size:13px;">✅ Deleted '+oldLines.length+' old completed orders.</div>';
-    renderAdmin();
-  }catch(err){console.error(err);setSyncDot('error');showToast('Error cleaning','red');}
-}
-
 async function adminDeleteAll(){
   if(!confirm('Delete ALL data? This cannot be undone!'))return;
   setSyncDot('syncing');
@@ -2646,37 +1961,121 @@ async function testRemainingChoice(choice){
   try{
     const add=j.state==='active'?Date.now()-j.startedAt:0;
     const total=j.elapsed+add;
-    // Mark current station done for the sentQty (partial complete)
-    await sb.from('stations').update({
-      state:'done',elapsed_ms:total,
-      done_at:nowStr(),sent_qty:sentQty
-    }).eq('id',sid);
     if(choice==='queue'){
-      // Send remaining to queue
-      await sb.from('stations').insert({
-        line_id:j.lineId,grp:j.group,
-        state:'queue',started_at:new Date().toISOString(),
-        elapsed_ms:0,done_at:nowStr(),
-        note:null,sent_qty:remaining,remaining_qty:0,
-        received_qty:remaining,from_grp:j.group,is_partial:true
+      // Atomic: mark done + create queue row for remaining
+      await rpcCall('rpc_done_station', {
+        p_station_id: sid,
+        p_elapsed_ms: total,
+        p_done_at: nowStr(),
+        p_sent_qty: sentQty,
+        p_mark_complete: false,
+        p_next_state: 'queue',
+        p_next_grp: j.group,
+        p_next_sent: remaining,
+        p_next_remaining: 0,
+        p_next_received: remaining,
+        p_next_from_grp: j.group,
+        p_next_is_partial: true,
+        p_next_note: null,
+        p_client_op_id: newOpId()
       });
       showToast(remaining+' pcs → Queue / Hang cho');
     } else {
-      // Keep remaining here as waiting
-      await sb.from('stations').insert({
-        line_id:j.lineId,grp:j.group,
-        state:'waiting',started_at:new Date().toISOString(),
-        elapsed_ms:0,done_at:null,
-        note:null,sent_qty:sentQty,remaining_qty:remaining,
-        received_qty:availableQty,is_partial:true
+      // Atomic: mark done + create waiting row for remaining
+      await rpcCall('rpc_done_station', {
+        p_station_id: sid,
+        p_elapsed_ms: total,
+        p_done_at: nowStr(),
+        p_sent_qty: sentQty,
+        p_mark_complete: false,
+        p_next_state: 'waiting',
+        p_next_grp: j.group,
+        p_next_sent: sentQty,
+        p_next_remaining: remaining,
+        p_next_received: availableQty,
+        p_next_from_grp: j.group,
+        p_next_is_partial: true,
+        p_next_note: null,
+        p_client_op_id: newOpId()
       });
       showToast(sentQty+' complete · '+remaining+' waiting here / Con lai');
     }
     await loadAll();
   }catch(err){
-    console.error(err);setSyncDot('error');showToast('Error / Loi','red');
+    console.error(err);setSyncDot('error');
+    showToast('Error — will retry / Loi','red');
   }
 }
+// ── GHOST/STUCK RECOVERY (v1.7) ───────────────────────────────────────────────
+async function recoverStuck(lineId){
+  const line=lines.find(l=>l.id===lineId);
+  if(!line){showToast('Line not found','red');return;}
+  if(!isLineStuck(line)){showToast('This line is no longer stuck','red');return;}
+  const info=getStuckInfo(line);
+  if(!info){showToast('Cannot determine recovery point','red');return;}
+  const totalQty=parseInt(line.qty)||0;
+  const qty=info.sent_qty||totalQty;
+  if(!confirm(`Recover ${line.so} / ${line.item}?\n\nIt will be sent back to Queue after "${shortGrp(info.grp)}".\n\nKuyrugun arkasina geri gonderilecek.`))return;
+  setSyncDot('syncing');
+  try{
+    // Also clean up any orphan 'taken' rows for this line
+    const orphanTaken=line.stations.filter(s=>s.state==='taken');
+    for(const ot of orphanTaken){
+      try{await sb.from('stations').delete().eq('id',ot.id);}catch(e){console.warn('orphan delete failed:',e);}
+    }
+    await rpcCall('rpc_send_to_queue', {
+      p_line_id: lineId,
+      p_grp: info.grp,
+      p_from_grp: info.grp,
+      p_qty: qty,
+      p_total_qty: totalQty,
+      p_done_at: nowStr(),
+      p_note: '♻ Auto-recovered (was stuck after '+info.grp+')',
+      p_client_op_id: newOpId(),
+      p_close_station_id: null
+    });
+    await loadAll();
+    showToast('♻ Recovered '+line.so+' / '+line.item,'green');
+  }catch(err){
+    console.error(err);setSyncDot('error');
+    showToast('Recovery error — will retry / Loi','red');
+  }
+}
+
+async function recoverAllStuck(){
+  const stuck=lines.filter(isLineStuck);
+  if(!stuck.length){showToast('No stuck items');return;}
+  if(!confirm(`Recover ALL ${stuck.length} stuck item(s)?\n\nThey will all be sent back to the Queue tab.`))return;
+  setSyncDot('syncing');
+  let ok=0,fail=0;
+  for(const line of stuck){
+    const info=getStuckInfo(line);
+    if(!info){fail++;continue;}
+    const totalQty=parseInt(line.qty)||0;
+    const qty=info.sent_qty||totalQty;
+    try{
+      const orphanTaken=line.stations.filter(s=>s.state==='taken');
+      for(const ot of orphanTaken){
+        try{await sb.from('stations').delete().eq('id',ot.id);}catch(e){}
+      }
+      await rpcCall('rpc_send_to_queue', {
+        p_line_id: line.id,
+        p_grp: info.grp,
+        p_from_grp: info.grp,
+        p_qty: qty,
+        p_total_qty: totalQty,
+        p_done_at: nowStr(),
+        p_note: '♻ Auto-recovered (bulk, was stuck after '+info.grp+')',
+        p_client_op_id: newOpId(),
+        p_close_station_id: null
+      });
+      ok++;
+    }catch(e){console.error('bulk recover failed for',line.so,e);fail++;}
+  }
+  await loadAll();
+  showToast('Recovered '+ok+(fail?' · '+fail+' failed':''), fail?'red':'green');
+}
+
 // ── ADMIN UNDO ────────────────────────────────────────────────────────────────
 let undoPending=null;
 function adminUndo(stationId,so,item,group,qty,lineId){
@@ -2690,24 +2089,18 @@ async function executeUndo(){
   const {stationId,so,item,group,qty,lineId}=undoPending;
   setSyncDot('syncing');
   try{
-    // Mark the station as 'taken' (removed from active)
-    await sb.from('stations').update({state:'taken'}).eq('id',stationId);
-    // Get line info
     const line=lines.find(l=>l.id===lineId);
     const totalQty=parseInt(line?.qty)||0;
-
-    // DON'T touch the Cutting waiting station — it should stay as is
-    // Just create a new queue entry for the undone qty
-    // so it can be picked up by the correct team
-
-    await sb.from('stations').insert({
-      line_id:lineId,grp:group,
-      state:'queue',started_at:new Date().toISOString(),
-      elapsed_ms:0,done_at:nowStr(),
-      note:'↩ Returned by Admin',
-      sent_qty:qty,remaining_qty:0,
-      received_qty:qty,from_grp:group,
-      is_partial:qty<totalQty
+    await rpcCall('rpc_send_to_queue', {
+      p_line_id: lineId,
+      p_grp: group,
+      p_from_grp: group,
+      p_qty: qty,
+      p_total_qty: totalQty,
+      p_done_at: nowStr(),
+      p_note: '↩ Returned by Admin',
+      p_client_op_id: newOpId(),
+      p_close_station_id: stationId
     });
     await loadAll();
     showToast('Undone — item returned to Queue / Geri alindi','green');
@@ -2801,25 +2194,6 @@ let shiftStartNotified=false;
 
 async function checkShiftEnd(){
   const si=getShiftInfo();
-
-  // ── Weekend → pause all active jobs
-  if(si.isWeekend&&!shiftEndNotified){
-    shiftEndNotified=true;
-    shiftStartNotified=false;
-    const activeJobs=jobs.filter(j=>j.state==='active');
-    if(activeJobs.length>0){
-      setSyncDot('syncing');
-      try{
-        for(const j of activeJobs){
-          const add=Date.now()-j.startedAt;
-          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
-        }
-        await loadAll();
-        showToast('⏸ Weekend — '+activeJobs.length+' job(s) paused / Cuoi tuan — tam dung','red');
-      }catch(e){setSyncDot('error');}
-    }
-    return;
-  }
 
   // ── Shift ENDED → pause all active jobs
   if(si.isEnded&&!shiftEndNotified){
@@ -2953,12 +2327,6 @@ function hideBulkSug(id){
 }
 
 async function handleBulkStart(){
-  // Weekend check
-  const _wd=new Date().getDay();
-  if(_wd===0||_wd===6){
-    showToast('Weekend — no work allowed / Cuoi tuan — khong lam viec','red');
-    return;
-  }
   const team=document.getElementById('inputTeam').value;
   if(!team||team==='__ALL__'){showToast('Select a team first');return;}
   const so=bulkSOValue;
@@ -2976,21 +2344,14 @@ async function handleBulkStart(){
   }
   if(!items.length){showToast('Add at least one item / Them it nhat mot san pham');return;}
 
-  // Validate — strict duplicate check
-  const ALIVE_STATES=['active','paused','waiting','done','queue'];
+  // Validate
   for(const {item,qty} of items){
     const existingLine=lines.find(l=>l.so===so&&l.item===item);
     if(existingLine){
-      if(existingLine.fully_done){
-        showToast(item+' already completed / Da hoan thanh','red');
-        return;
-      }
-      const aliveStations=existingLine.stations.filter(s=>ALIVE_STATES.includes(s.state));
-      if(aliveStations.length>0){
-        const where=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
-        showToast(item+' already in system: '+where,'red');
-        return;
-      }
+      const activeHere=jobs.find(j=>j.lineId===existingLine.id&&j.group===team&&(j.state==='active'||j.state==='paused'));
+      if(activeHere){showToast(item+' already active at '+team,'red');return;}
+      const doneHere=existingLine.stations.find(s=>s.grp===team&&s.state==='done');
+      if(doneHere){showToast(item+' already completed at '+team,'red');return;}
     }
   }
 
@@ -3020,27 +2381,21 @@ async function handleBulkStart(){
     await loadAll();
     showToast('✓ Started '+started+' items for '+so,'green');
 
-    // If Cutting → automatically start Part Pull for all items (mandatory, no modal)
+    // If Cutting → ask about Part Pull for all items
     if(team==='Cutting'&&items.length>0){
-      const ALIVE=['active','paused','waiting','done'];
-      let ppStarted=0;
-      for(const {item,qty} of items){
+      const ppItems=items.filter(({item,qty})=>{
         const currentLine=lines.find(l=>l.so===so&&l.item===item);
-        if(!currentLine)continue;
-        const ppExists=currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
-        if(ppExists)continue;
-        try{
-          await sb.from('stations').insert({
-            line_id:currentLine.id,grp:'Part Pull',state:'active',
-            started_at:new Date().toISOString(),elapsed_ms:0,
-            done_at:null,note:null,sent_qty:0,remaining_qty:qty
-          });
-          ppStarted++;
-        }catch(err){console.error('Auto Part Pull error',err);}
-      }
-      if(ppStarted>0){
-        await loadAll();
-        showToast('✓ Part Pull auto-started for '+ppStarted+' item(s)','green');
+        const ppActive=currentLine&&jobs.find(j=>j.lineId===currentLine.id&&j.group==='Part Pull'&&(j.state==='active'||j.state==='paused'));
+        const ppDone=currentLine&&currentLine.stations.find(s=>s.grp==='Part Pull'&&s.state==='done');
+        return !ppActive&&!ppDone;
+      });
+      if(ppItems.length>0){
+        partPullPending={so,items:ppItems,bulk:true};
+        document.getElementById('partPullCtx').textContent=so+' — '+ppItems.length+' item(s)';
+        document.getElementById('partPullGrid').innerHTML=`
+          <span class="cg-lbl">Sales Order</span><span class="cg-val">${so}</span>
+          <span class="cg-lbl">Items</span><span class="cg-val">${ppItems.map(x=>x.item).join(', ')}</span>`;
+        document.getElementById('partPullModal').classList.add('open');
       }
     }
   }catch(err){
@@ -3061,390 +2416,19 @@ function tick(){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-// ── CHAT SYSTEM ─────────────────────────────────────────────────────────────
-let deviceName='';
-let chatMessages=[];
-let chatLastSeenAt=null;
-let chatChannel=null;
-
-function loadDeviceName(){
-  try{deviceName=localStorage.getItem('shaxon_device_name')||'';}catch(e){deviceName='';}
-  return deviceName;
-}
-
-function saveDeviceName(){
-  const v=(document.getElementById('deviceNameInput').value||'').trim();
-  if(!v){showToast('Enter a name / Nhap ten','red');return;}
-  if(v.length>40){showToast('Name too long (max 40)','red');return;}
-  deviceName=v;
-  try{localStorage.setItem('shaxon_device_name',v);}catch(e){}
-  closeModal('deviceNameModal');
-  const el=document.getElementById('chatDeviceName');
-  if(el)el.textContent=v;
-  showToast('Device name saved: '+v,'green');
-}
-
-function changeDeviceName(){
-  document.getElementById('deviceNameInput').value=deviceName||'';
-  document.getElementById('deviceNameModal').classList.add('open');
-  setTimeout(()=>document.getElementById('deviceNameInput').focus(),100);
-}
-
-function ensureDeviceName(){
-  if(!deviceName){
-    document.getElementById('deviceNameInput').value='';
-    document.getElementById('deviceNameModal').classList.add('open');
-    setTimeout(()=>document.getElementById('deviceNameInput').focus(),200);
-  } else {
-    const el=document.getElementById('chatDeviceName');
-    if(el)el.textContent=deviceName;
-  }
-}
-
-async function loadChatMessages(){
-  try{
-    // Last 30 days only
-    const cutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
-    const {data,error}=await sb.from('messages').select('*').gte('created_at',cutoff).order('created_at',{ascending:true});
-    if(error)throw error;
-    chatMessages=data||[];
-    renderChatMessages();
-    updateChatBadge();
-  }catch(err){console.error('Chat load error:',err);}
-}
-
-function renderChatMessages(){
-  const box=document.getElementById('chatMessages');
-  if(!box)return;
-  if(!chatMessages.length){
-    box.innerHTML='<div style="text-align:center;color:var(--txt3);font-size:13px;padding:30px;">No messages yet<br>Chua co tin nhan</div>';
-    return;
-  }
-  let lastDate=null;
-  const html=chatMessages.map(m=>{
-    const isMe=m.from_device===deviceName;
-    const t=new Date(m.created_at);
-    const today=new Date();
-    const sameDay=t.toDateString()===today.toDateString();
-    const yesterday=new Date(today);yesterday.setDate(yesterday.getDate()-1);
-    const isYesterday=t.toDateString()===yesterday.toDateString();
-    let dateLabel;
-    if(sameDay)dateLabel='Today';
-    else if(isYesterday)dateLabel='Yesterday';
-    else dateLabel=t.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const dateKey=t.toDateString();
-    let dateSep='';
-    if(dateKey!==lastDate){
-      dateSep=`<div style="text-align:center;font-size:11px;color:var(--txt3);background:var(--bg3);padding:3px 10px;border-radius:10px;margin:8px auto;align-self:center;">${dateLabel}</div>`;
-      lastDate=dateKey;
-    }
-    const time=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
-    const escContent=(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const escFrom=(m.from_device||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const isDeleted=!!m.deleted_at;
-    const imgHtml=(!isDeleted&&m.image_url)?`<img src="${m.image_url}" onclick="openImageViewer('${m.image_url}')" style="max-width:100%;max-height:300px;border-radius:8px;display:block;margin:${escContent?'0 0 4px':'0'};cursor:pointer;" loading="lazy"/>`:'';
-    const textHtml=isDeleted
-      ?`<div style="font-size:13px;font-style:italic;opacity:.65;line-height:1.4;">🚫 This message was deleted / Tin nhan da bi xoa</div>`
-      :(escContent?`<div data-translate-id="${m.id}" style="font-size:14px;line-height:1.4;word-wrap:break-word;${m.image_url?'margin-top:4px;':''}">${escContent}<div data-translate-target="${m.id}" style="display:none;font-size:12px;font-style:italic;${isMe?'opacity:.78;border-top:1px solid rgba(255,255,255,.25);':'color:var(--txt2);border-top:1px solid var(--bdr3);'}margin-top:4px;padding-top:3px;line-height:1.35;"></div></div>`:'');
-    // Delete button — only on own messages, only if not already deleted
-    const delBtn=(isMe&&!isDeleted)?`<button onclick="deleteChatMessage('${m.id}')" title="Delete" class="msg-del-btn" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;font-size:14px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">🗑</button>`:'';
-    if(isMe){
-      return `${dateSep}<div class="msg-bubble" style="align-self:flex-end;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--blue)'};color:${isDeleted?'var(--txt2)':'#fff'};padding:6px 8px;border-radius:16px 16px 4px 16px;${isDeleted?'border:1px dashed var(--bdr2);':''}">
-        ${imgHtml}
-        ${textHtml}
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:3px;padding:0 4px;">
-          <span style="font-size:10px;opacity:.75;">${time}</span>
-          ${delBtn}
-        </div>
-      </div>`;
-    } else {
-      return `${dateSep}<div class="msg-bubble" style="align-self:flex-start;max-width:70%;background:${isDeleted?'var(--bg2)':'var(--bg1)'};border:1px ${isDeleted?'dashed':'solid'} var(--bdr3);padding:6px 8px;border-radius:16px 16px 16px 4px;position:relative;">
-        <div style="font-size:11px;font-weight:600;color:${isDeleted?'var(--txt3)':'var(--blue)'};margin-bottom:2px;padding:0 4px;">${escFrom}</div>
-        ${imgHtml}
-        ${textHtml}
-        <div style="font-size:10px;color:var(--txt3);text-align:right;margin-top:3px;padding:0 4px;">${time}</div>
-      </div>`;
-    }
-  }).join('');
-  box.innerHTML=html;
-  // Scroll to bottom
-  setTimeout(()=>{box.scrollTop=box.scrollHeight;},50);
-  // Trigger translations (async, non-blocking)
-  translateVisibleMessages();
-}
-
-// ── TRANSLATION (MyMemory free API) ─────────────────────────────────────────
-const _translateCache=new Map();
-
-function detectLang(text){
-  if(!text||!text.trim())return null;
-  // Vietnamca'ya ozel karakterler — varsa Vietnamca
-  if(/[ăâđêôơưĂÂĐÊÔƠƯạảấầẩẫậắằẳẵặẹẻẽếềểễệỉĩịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹàáâãèéêìíòóôõùúýÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝ]/.test(text))return 'vi';
-  // Aksi halde Latin karakterler agirlikla — Ingilizce kabul et
-  return 'en';
-}
-
-async function translateText(text,from,to){
-  if(!text||!text.trim())return null;
-  const key=from+'|'+to+'|'+text;
-  if(_translateCache.has(key))return _translateCache.get(key);
-  try{
-    const url='https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+from+'|'+to;
-    const res=await fetch(url);
-    if(!res.ok)throw new Error('API error');
-    const data=await res.json();
-    const translated=data&&data.responseData&&data.responseData.translatedText;
-    if(translated&&translated.toLowerCase()!==text.toLowerCase()){
-      _translateCache.set(key,translated);
-      return translated;
-    }
-    return null;
-  }catch(err){
-    console.warn('Translate failed:',err);
-    return null;
-  }
-}
-
-async function autoTranslate(text){
-  const lang=detectLang(text);
-  if(!lang)return null;
-  const target=lang==='vi'?'en':'vi';
-  return await translateText(text,lang,target);
-}
-
-// Translate visible messages — call after rendering
-async function translateVisibleMessages(){
-  const msgs=chatMessages.filter(m=>!m.deleted_at&&m.content&&m.content.trim());
-  for(const m of msgs){
-    const el=document.querySelector('[data-translate-id="'+m.id+'"]');
-    if(!el||el.dataset.done==='1')continue;
-    el.dataset.done='1';
-    const tr=await autoTranslate(m.content);
-    if(tr){
-      const target=document.querySelector('[data-translate-target="'+m.id+'"]');
-      if(target){
-        target.textContent='🌐 '+tr;
-        target.style.display='block';
-      }
-    }
-  }
-}
-
-async function sendChatMessage(){
-  if(!deviceName){ensureDeviceName();return;}
-  const inp=document.getElementById('chatInput');
-  const text=(inp.value||'').trim();
-  if(!text)return;
-  if(text.length>500){showToast('Message too long (max 500)','red');return;}
-  inp.value='';
-  try{
-    const {error}=await sb.from('messages').insert({from_device:deviceName,content:text});
-    if(error)throw error;
-  }catch(err){console.error('Send error:',err);showToast('Send failed','red');}
-}
-
-// ── PHOTO HANDLING ──────────────────────────────────────────────────────────
-async function compressImage(file,maxWidth){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const img=new Image();
-      img.onload=()=>{
-        let w=img.width,h=img.height;
-        if(w>maxWidth){h=Math.round(h*(maxWidth/w));w=maxWidth;}
-        const canvas=document.createElement('canvas');
-        canvas.width=w;canvas.height=h;
-        const ctx=canvas.getContext('2d');
-        ctx.drawImage(img,0,0,w,h);
-        canvas.toBlob(blob=>{
-          if(!blob){reject(new Error('Compression failed'));return;}
-          resolve(blob);
-        },'image/jpeg',0.82);
-      };
-      img.onerror=()=>reject(new Error('Image load failed'));
-      img.src=e.target.result;
-    };
-    reader.onerror=()=>reject(new Error('Read failed'));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function handleChatPhoto(event){
-  const file=event.target.files&&event.target.files[0];
-  // Reset input so same photo can be picked again
-  event.target.value='';
-  if(!file)return;
-  if(!deviceName){ensureDeviceName();return;}
-  if(!file.type.startsWith('image/')){showToast('Photo only / Chi anh','red');return;}
-  showToast('📷 Compressing...');
-  try{
-    const blob=await compressImage(file,1280);
-    const sizeKB=Math.round(blob.size/1024);
-    showToast('📤 Uploading ('+sizeKB+' KB)...');
-    // Build a unique filename
-    const ts=Date.now();
-    const rand=Math.random().toString(36).slice(2,8);
-    const filename=ts+'_'+rand+'.jpg';
-    const {error:upErr}=await sb.storage.from('chat-images').upload(filename,blob,{contentType:'image/jpeg',upsert:false});
-    if(upErr)throw upErr;
-    // Get public URL
-    const {data:urlData}=sb.storage.from('chat-images').getPublicUrl(filename);
-    const publicUrl=urlData.publicUrl;
-    // Get caption from input if any
-    const inp=document.getElementById('chatInput');
-    const caption=(inp.value||'').trim();
-    inp.value='';
-    // Insert message with image
-    const {error:msgErr}=await sb.from('messages').insert({from_device:deviceName,content:caption,image_url:publicUrl});
-    if(msgErr)throw msgErr;
-    showToast('✓ Photo sent','green');
-  }catch(err){
-    console.error('Photo error:',err);
-    showToast('Photo upload failed: '+(err.message||''),'red');
-  }
-}
-
-function openImageViewer(url){
-  const overlay=document.createElement('div');
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px;';
-  overlay.onclick=()=>document.body.removeChild(overlay);
-  const img=document.createElement('img');
-  img.src=url;
-  img.style.cssText='max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;';
-  const closeBtn=document.createElement('div');
-  closeBtn.textContent='✕';
-  closeBtn.style.cssText='position:absolute;top:14px;right:18px;color:#fff;font-size:32px;font-weight:300;cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(0,0,0,.4);';
-  overlay.appendChild(img);
-  overlay.appendChild(closeBtn);
-  document.body.appendChild(overlay);
-}
-
-async function deleteChatMessage(msgId){
-  const msg=chatMessages.find(m=>m.id===msgId);
-  if(!msg){showToast('Message not found','red');return;}
-  // Hard rule: only the device with the same name can delete its own messages
-  if(msg.from_device!==deviceName){
-    showToast('You can only delete your own messages','red');
-    return;
-  }
-  if(msg.deleted_at){return;}
-  if(!confirm('Delete this message?\n\nXoa tin nhan nay?'))return;
-  try{
-    // If image, also remove from storage to save space
-    if(msg.image_url){
-      try{
-        // Extract filename from public URL
-        const m=msg.image_url.match(/\/chat-images\/([^?]+)/);
-        if(m&&m[1]){
-          await sb.storage.from('chat-images').remove([decodeURIComponent(m[1])]);
-        }
-      }catch(e){console.warn('Image delete failed (continuing):',e);}
-    }
-    // Soft delete: set deleted_at, clear content + image_url
-    const {error}=await sb.from('messages').update({
-      deleted_at:new Date().toISOString(),
-      content:'',
-      image_url:null
-    }).eq('id',msgId).eq('from_device',deviceName); // double-check from_device server-side too
-    if(error)throw error;
-    showToast('Message deleted','green');
-  }catch(err){
-    console.error('Delete error:',err);
-    showToast('Delete failed','red');
-  }
-}
-
-function isOnChatPage(){
-  const p=document.getElementById('page-chat');
-  return p&&p.classList.contains('active');
-}
-
-function updateChatBadge(){
-  const badge=document.getElementById('chatBadge');
-  if(!badge)return;
-  const lastSeen=parseInt(localStorage.getItem('shaxon_chat_last_seen')||'0');
-  const unread=chatMessages.filter(m=>m.from_device!==deviceName&&new Date(m.created_at).getTime()>lastSeen).length;
-  if(unread>0&&!isOnChatPage()){
-    badge.textContent=unread>99?'99+':unread;
-    badge.classList.add('on');
-  } else {
-    badge.classList.remove('on');
-  }
-}
-
-function markChatAsSeen(){
-  try{localStorage.setItem('shaxon_chat_last_seen',Date.now().toString());}catch(e){}
-  updateChatBadge();
-}
-
-function playChatSound(){
-  try{
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
-    osc.type='sine';osc.frequency.value=880;
-    gain.gain.setValueAtTime(0,ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.15,ctx.currentTime+0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.25);
-    osc.start();osc.stop(ctx.currentTime+0.25);
-  }catch(e){}
-}
-
-function setupChatRealtime(){
-  if(chatChannel){try{sb.removeChannel(chatChannel);}catch(e){}}
-  chatChannel=sb.channel('shaxon-chat-v1')
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async(payload)=>{
-      const msg=payload.new;
-      if(!msg)return;
-      // Add to local list if not already there
-      if(!chatMessages.some(m=>m.id===msg.id)){
-        chatMessages.push(msg);
-        // Keep only last 30 days in memory
-        const cutoff=Date.now()-30*24*60*60*1000;
-        chatMessages=chatMessages.filter(m=>new Date(m.created_at).getTime()>cutoff);
-        renderChatMessages();
-      }
-      // Update badge if not from me and not on chat page
-      if(msg.from_device!==deviceName){
-        updateChatBadge();
-        // Play sound if not on chat page
-        if(!isOnChatPage()){
-          playChatSound();
-        }
-      }
-      // If on chat page, mark as seen
-      if(isOnChatPage()){
-        markChatAsSeen();
-      }
-    })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages'},(payload)=>{
-      // Sync deletes/edits across devices
-      const updated=payload.new;
-      if(!updated)return;
-      const idx=chatMessages.findIndex(m=>m.id===updated.id);
-      if(idx>=0){
-        chatMessages[idx]=updated;
-        renderChatMessages();
-      }
-    })
-    .subscribe();
-}
-
 async function init(){
   loadShiftSettings();
   updateClock();
   updateShiftBar();
+  updatePendingBadge();
+  // Retry any pending offline ops from previous session before first load
+  if(navigator.onLine){
+    try{await processPendingOps();}catch(e){console.warn('initial retry failed:',e);}
+  }
   await loadAll();
   setupRealtime();
-  checkRememberedAdmin();
-  loadDeviceName();
-  await loadChatMessages();
-  setupChatRealtime();
   document.getElementById('connOverlay').classList.add('hidden');
   setInterval(tick,1000);
-  // Ask for device name after a short delay if not set
-  if(!deviceName)setTimeout(ensureDeviceName,800);
 }
 
 document.addEventListener('DOMContentLoaded',function(){
