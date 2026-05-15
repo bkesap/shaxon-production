@@ -118,7 +118,7 @@ body{font-family:var(--font);background:var(--bg2);}
 .bulk-top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
 .bulk-so-label{font-size:11px;font-weight:500;color:var(--txt2);}
 .bulk-so-val{font-size:15px;font-weight:700;color:var(--blue);}
-.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;}
+.bulk-rows{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow-y:auto;}
 .bulk-row{display:flex;align-items:center;gap:8px;}
 .bulk-item-wrap{flex:1;position:relative;}
 .bulk-item{width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);}
@@ -631,6 +631,7 @@ body{font-family:var(--font);background:var(--bg2);}
     <div class="admin-panel" id="adminPanel">
       <div class="admin-top">
         <h2>🔒 Admin Panel — Shaxon Production</h2>
+        <input type="text" id="adminSearch" name="admin_search_x" placeholder="🔍 Search SO or item..." oninput="renderAdmin()" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" role="presentation" style="flex:1;max-width:320px;padding:7px 12px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);margin:0 16px;"/>
         <button class="admin-logout" onclick="adminLogout()">Logout</button>
       </div>
       <div class="admin-body" id="adminBody">Loading...</div>
@@ -2007,8 +2008,11 @@ function adminLogout(){
 function renderAdmin(){
   if(!adminLoggedIn)return;
   const body=document.getElementById('adminBody');
+  // Search filter
+  const q=(document.getElementById('adminSearch')?.value||'').trim().toUpperCase();
+  const matches=(so,item)=>!q||(so||'').toUpperCase().includes(q)||(item||'').toUpperCase().includes(q);
   // Stuck/ghost lines section (most urgent)
-  const stuckLines=lines.filter(isLineStuck);
+  const stuckLines=lines.filter(l=>isLineStuck(l)&&matches(l.so,l.item));
   const stuckRows=stuckLines.map(l=>{
     const info=getStuckInfo(l);
     const stuckQty=info?(info.sent_qty||parseInt(l.qty)||0):(parseInt(l.qty)||0);
@@ -2025,7 +2029,8 @@ function renderAdmin(){
   }).join('');
 
   // Active jobs section
-  const activeRows=jobs.map(j=>`<tr>
+  const activeJobsFiltered=jobs.filter(j=>matches(j.so,j.item));
+  const activeRows=activeJobsFiltered.map(j=>`<tr>
     <td>${j.so}</td><td class="item-num" title="${j.item}">${j.item}</td>
     <td>${j.displayQty||j.totalQty} pcs</td>
     <td>${shortGrp(j.group)}</td>
@@ -2037,14 +2042,16 @@ function renderAdmin(){
   </tr>`).join('');
 
   // Queue items section
-  const queueRows=queueItems.map(qi=>`<tr>
+  const queueItemsFiltered=queueItems.filter(qi=>matches(qi.so,qi.item));
+  const queueRows=queueItemsFiltered.map(qi=>`<tr>
     <td>${qi.so}</td><td class="item-num">${qi.item}</td>
     <td>${qi.qty} pcs</td><td>${shortGrp(qi.fromGroup)}</td><td>${qi.queuedAt}</td>
     <td><button class="btn-del" onclick="adminDeleteStation('${qi.id}','${qi.so}','${qi.item}')">Delete</button></td>
   </tr>`).join('');
 
   // Completed lines section
-  const completedRows=lines.filter(l=>l.fully_done).map(l=>`<tr>
+  const completedLinesFiltered=lines.filter(l=>l.fully_done&&matches(l.so,l.item));
+  const completedRows=completedLinesFiltered.map(l=>`<tr>
     <td>${l.so}</td><td class="item-num">${l.item}</td><td>${l.qty}</td>
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--green-lt);color:#1b5e20;">Complete</span></td>
     <td><button class="btn-del" onclick="adminDeleteLine('${l.id}','${l.so}','${l.item}')">Delete Line</button></td>
@@ -2064,21 +2071,21 @@ function renderAdmin(){
       </div>
     </div>`:''}
     <div class="admin-section" data-sec="active">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('active')">Active Jobs (${jobs.length})</div>
+      <div class="admin-section-hdr" onclick="toggleAdminSection('active')">Active Jobs (${activeJobsFiltered.length}${q?' / '+jobs.length:''})</div>
       <div class="admin-section-body">
-        ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
+        ${activeJobsFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'No active jobs')+'</div>'}
       </div>
     </div>
     <div class="admin-section" data-sec="queue">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('queue')">Queue (${queueItems.length})</div>
+      <div class="admin-section-hdr" onclick="toggleAdminSection('queue')">Queue (${queueItemsFiltered.length}${q?' / '+queueItems.length:''})</div>
       <div class="admin-section-body">
-        ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
+        ${queueItemsFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'Queue is empty')+'</div>'}
       </div>
     </div>
     <div class="admin-section" data-sec="completed">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('completed')">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
+      <div class="admin-section-hdr" onclick="toggleAdminSection('completed')">Completed Orders (${completedLinesFiltered.length}${q?' / '+lines.filter(l=>l.fully_done).length:''})</div>
       <div class="admin-section-body">
-        ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+        ${completedLinesFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'No completed orders')+'</div>'}
       </div>
     </div>
     <div class="admin-section" data-sec="zombie">
@@ -2139,6 +2146,12 @@ function renderAdmin(){
     </div>`;
   // Apply saved collapsed state (default: all collapsed except stuck if present)
   applyAdminSectionStates();
+  // When searching, auto-open sections that have matches so results aren't hidden
+  if(q){
+    if(activeJobsFiltered.length)document.querySelector('.admin-section[data-sec="active"]')?.classList.remove('collapsed');
+    if(queueItemsFiltered.length)document.querySelector('.admin-section[data-sec="queue"]')?.classList.remove('collapsed');
+    if(completedLinesFiltered.length)document.querySelector('.admin-section[data-sec="completed"]')?.classList.remove('collapsed');
+  }
 }
 
 function getAdminSectionStates(){
