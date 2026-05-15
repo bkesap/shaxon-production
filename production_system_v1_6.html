@@ -326,7 +326,13 @@ body{font-family:var(--font);background:var(--bg2);}
 .admin-logout{padding:6px 14px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:var(--r-md);font-size:13px;font-weight:500;cursor:pointer;}
 .admin-body{flex:1;overflow-y:auto;padding:16px;}
 .admin-section{background:var(--bg1);border-radius:var(--r-lg);border:1px solid var(--bdr3);margin-bottom:14px;overflow:hidden;}
-.admin-section-hdr{padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--bdr3);font-size:13px;font-weight:600;color:var(--txt1);}
+.admin-section-hdr{padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--bdr3);font-size:13px;font-weight:600;color:var(--txt1);cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;}
+.admin-section-hdr:hover{background:var(--bdr3);}
+.admin-section-hdr::before{content:"▼";font-size:10px;color:var(--txt3);transition:transform .2s;display:inline-block;}
+.admin-section.collapsed .admin-section-hdr::before{transform:rotate(-90deg);}
+.admin-section.collapsed .admin-section-hdr{border-bottom:none;}
+.admin-section.collapsed .admin-section-body{display:none;}
+.admin-section-body{}
 .admin-table{width:100%;border-collapse:collapse;font-size:13px;}
 .admin-table th{padding:8px 14px;text-align:left;font-size:11px;font-weight:500;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--bdr3);background:var(--bg2);}
 .admin-table td{padding:9px 14px;border-bottom:1px solid var(--bdr3);vertical-align:middle;}
@@ -830,6 +836,19 @@ function formatMs(ms){
 }
 function nowStr(){
   const d=new Date();let h=d.getHours(),m=d.getMinutes();
+  const ap=h>=12?'PM':'AM';h=h%12||12;
+  return h+':'+pad(m)+' '+ap;
+}
+function nowIso(){return new Date().toISOString();}
+// Extract HH:MM AM/PM from any done_at value (ISO datetime or already "3:30 PM")
+function fmtTime(v){
+  if(!v)return '';
+  // Already in display format like "3:30 PM"?
+  if(/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(v))return v;
+  // Try parsing as ISO/datetime
+  const d=new Date(v);
+  if(isNaN(d))return v;
+  let h=d.getHours(),m=d.getMinutes();
   const ap=h>=12?'PM':'AM';h=h%12||12;
   return h+':'+pad(m)+' '+ap;
 }
@@ -1418,7 +1437,7 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
     await rpcCall('rpc_done_station', {
       p_station_id: sid,
       p_elapsed_ms: total,
-      p_done_at: nowStr(),
+      p_done_at: nowIso(),
       p_sent_qty: sentQty,
       p_mark_complete: !!markComplete,
       p_next_state: 'queue',
@@ -1804,10 +1823,20 @@ function renderQueue(){
 // ── RENDER DAILY DATA ─────────────────────────────────────────────────────────
 function toLocalDate(u){
   if(!u)return'';
-  // ISO datetime or "3:30 PM" partial — extract local date
+  // Pure time string "3:30 PM" cannot be turned into a date — return empty
+  if(/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(u))return '';
   const d=new Date(u);
   if(isNaN(d))return'';
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Done date estimator: prefer done_at if it's an ISO, otherwise fall back to started_at
+function doneDate(s){
+  const fromDoneAt=toLocalDate(s.done_at);
+  if(fromDoneAt)return fromDoneAt;
+  // Old records: done_at was only "3:30 PM", but station is in done state and started_at is ISO.
+  // Best estimate: it was done on the same day it was started.
+  if(s.state==='done'||s.state==='taken')return toLocalDate(s.started_at);
+  return '';
 }
 function renderDaily(){
   const today=new Date();
@@ -1820,7 +1849,7 @@ function renderDaily(){
 
   // Top summary
   const receivedToday=allStations.filter(s=>['active','paused','waiting','done','queue'].includes(s.state)&&toLocalDate(s.started_at)===todayStr).length;
-  const sentToday=allStations.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+  const sentToday=allStations.filter(s=>s.state==='done'&&doneDate(s)===todayStr).length;
   const activeNow=allStations.filter(s=>['active','paused'].includes(s.state)).length;
   const pendingNow=allStations.filter(s=>['queue','waiting'].includes(s.state)).length;
   document.getElementById('dlySumRecv').textContent=receivedToday;
@@ -1832,7 +1861,7 @@ function renderDaily(){
   const rowsHtml=TEAMS.map(team=>{
     const tSt=allStations.filter(s=>s.grp===team);
     const recv=tSt.filter(s=>['active','paused','waiting','done','queue'].includes(s.state)&&toLocalDate(s.started_at)===todayStr).length;
-    const sent=tSt.filter(s=>s.state==='done'&&toLocalDate(s.done_at)===todayStr).length;
+    const sent=tSt.filter(s=>s.state==='done'&&doneDate(s)===todayStr).length;
     const active=tSt.filter(s=>['active','paused'].includes(s.state)).length;
     return `<tr>
       <td style="padding:10px 14px;font-weight:600;">${team}</td>
@@ -1918,7 +1947,7 @@ function renderDash(){
       const notesHtml=allNotes.length?`<div class="dash-note" title="${allNotes.join(' | ')}">📝 ${allNotes.join(' · ')}</div>`:'';
       // Find finish time: Testing/Packing done station
       const finishSt=l.stations.find(s=>s.grp===FINAL&&s.state==='done'&&s.done_at);
-      const finishedAt=finishSt?`<span style="color:var(--green);font-weight:500;">✓ ${finishSt.done_at}</span>`:'<span style="color:var(--txt3);">—</span>';
+      const finishedAt=finishSt?`<span style="color:var(--green);font-weight:500;">✓ ${fmtTime(finishSt.done_at)}</span>`:'<span style="color:var(--txt3);">—</span>';
       return `<tr class="${l.fully_done&&isLinePartial(l)?'row-partial':l.fully_done?'row-done':''}">
         <td class="item-num" title="${l.item}">${l.item}</td><td>${l.qty}</td>
         <td><span class="ob ${obCls}"><span class="ob-dot"></span>${obLbl}</span></td>
@@ -2022,76 +2051,121 @@ function renderAdmin(){
   </tr>`).join('');
 
   body.innerHTML=`
-    ${stuckLines.length?`<div class="admin-section admin-section-stuck">
-      <div class="admin-section-hdr" style="background:#FFF4F4;color:var(--red-dk);display:flex;align-items:center;gap:8px;">
+    ${stuckLines.length?`<div class="admin-section admin-section-stuck" data-sec="stuck">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('stuck')" style="background:#FFF4F4;color:var(--red-dk);">
         <span style="font-size:15px;">⚠️</span>
         <span>Stuck / Ghost Items (${stuckLines.length})</span>
         <span style="font-weight:400;font-size:11px;opacity:.8;">— lost from production flow</span>
         <div style="flex:1;"></div>
-        ${stuckLines.length>1?`<button class="btn-recover-all" style="font-size:11px;padding:5px 11px;" onclick="recoverAllStuck()">♻ Recover All</button>`:''}
+        ${stuckLines.length>1?`<button class="btn-recover-all" style="font-size:11px;padding:5px 11px;" onclick="event.stopPropagation();recoverAllStuck()">♻ Recover All</button>`:''}
       </div>
-      <table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Stuck Point</th><th>Last Done</th><th>Action</th></tr></thead><tbody>${stuckRows}</tbody></table>
+      <div class="admin-section-body">
+        <table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Stuck Point</th><th>Last Done</th><th>Action</th></tr></thead><tbody>${stuckRows}</tbody></table>
+      </div>
     </div>`:''}
-    <div class="admin-section">
-      <div class="admin-section-hdr">Active Jobs (${jobs.length})</div>
-      ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">Queue (${queueItems.length})</div>
-      ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
-      ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
-    </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🧟 Clean Stuck Cutting / Part Pull (Zombie)</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Finds stations stuck in wrong state — e.g. Cutting/Part Pull still showing alive after C1-C4 took over, duplicate same-team entries, or stations alive when item is already complete. Marks them as <strong>taken</strong> (hidden, history kept).
-        </div>
-        <button onclick="findZombies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧟 Find Zombies</button>
-        <div id="zombieResult" style="display:none;"></div>
+    <div class="admin-section" data-sec="active">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('active')">Active Jobs (${jobs.length})</div>
+      <div class="admin-section-body">
+        ${jobs.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Team</th><th>State</th><th>Action</th></tr></thead><tbody>${activeRows}</tbody></table>`:'<div class="admin-empty">No active jobs</div>'}
       </div>
     </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">🔍 Data Consistency Check / Kiem tra du lieu</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-          Finds lines with contradictory data: <strong>fully_done=true</strong> but Test/Pack still alive, OR stations alive but <strong>done_at</strong> is set. Lists for manual review — you decide: mark complete or reopen.
-        </div>
-        <button onclick="findInconsistencies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔍 Find Inconsistencies</button>
-        <div id="inconsistencyResult" style="display:none;"></div>
+    <div class="admin-section" data-sec="queue">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('queue')">Queue (${queueItems.length})</div>
+      <div class="admin-section-body">
+        ${queueItems.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>From</th><th>Time</th><th>Action</th></tr></thead><tbody>${queueRows}</tbody></table>`:'<div class="admin-empty">Queue is empty</div>'}
       </div>
     </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr">⏱ Shift Settings / Cai dat ca lam viec</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Bat dau ca</label>
-            <input type="time" id="shiftStartInput" value="${shiftStart}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
+    <div class="admin-section" data-sec="completed">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('completed')">Completed Orders (${lines.filter(l=>l.fully_done).length})</div>
+      <div class="admin-section-body">
+        ${lines.filter(l=>l.fully_done).length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">No completed orders</div>'}
+      </div>
+    </div>
+    <div class="admin-section" data-sec="zombie">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('zombie')">🧟 Clean Stuck Cutting / Part Pull (Zombie)</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Finds stations stuck in wrong state — e.g. Cutting/Part Pull still showing alive after C1-C4 took over, duplicate same-team entries, or stations alive when item is already complete. Marks them as <strong>taken</strong> (hidden, history kept).
           </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Ket thuc ca</label>
-            <input type="time" id="shiftEndInput" value="${shiftEnd}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
-          </div>
-          <button onclick="saveShiftSettings()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;height:38px;">Save / Luu</button>
-        </div>
-        <div style="font-size:12px;color:var(--txt3);background:var(--bg2);padding:9px 12px;border-radius:var(--r-md);line-height:1.7;">
-          🕗 Shift starts automatically at the set time.<br>
-          ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
-          🔁 For overtime, just extend the end time here.
+          <button onclick="findZombies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧟 Find Zombies</button>
+          <div id="zombieResult" style="display:none;"></div>
         </div>
       </div>
     </div>
-    <div class="admin-section">
-      <div class="admin-section-hdr" style="color:var(--red);">⚠️ Danger Zone</div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:13px;color:var(--txt2);">Delete all data — use only for testing / reset. Cannot be undone.</div>
-        <button class="btn-del" style="width:fit-content;padding:8px 16px;font-size:13px;" onclick="adminDeleteAll()">🗑 Delete ALL Data</button>
+    <div class="admin-section" data-sec="consistency">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('consistency')">🔍 Data Consistency Check / Kiem tra du lieu</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Finds lines with contradictory data: <strong>fully_done=true</strong> but Test/Pack still alive, OR stations alive but <strong>done_at</strong> is set. Lists for manual review — you decide: mark complete or reopen.
+          </div>
+          <button onclick="findInconsistencies()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🔍 Find Inconsistencies</button>
+          <div id="inconsistencyResult" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="admin-section" data-sec="shift">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('shift')">⏱ Shift Settings / Cai dat ca lam viec</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift Start / Bat dau ca</label>
+              <input type="time" id="shiftStartInput" value="${shiftStart}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;font-weight:500;color:var(--txt2);">Shift End / Ket thuc ca</label>
+              <input type="time" id="shiftEndInput" value="${shiftEnd}" style="padding:8px 10px;font-size:15px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:var(--font);color:var(--txt1);background:var(--bg1);outline:none;width:130px;"/>
+            </div>
+            <button onclick="saveShiftSettings()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;height:38px;">Save / Luu</button>
+          </div>
+          <div style="font-size:12px;color:var(--txt3);background:var(--bg2);padding:9px 12px;border-radius:var(--r-md);line-height:1.7;">
+            🕗 Shift starts automatically at the set time.<br>
+            ⏸ At end time, all active jobs are auto-paused and a notification is shown.<br>
+            🔁 For overtime, just extend the end time here.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="admin-section" data-sec="danger">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('danger')" style="color:var(--red);">⚠️ Danger Zone</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);">Delete all data — use only for testing / reset. Cannot be undone.</div>
+          <button class="btn-del" style="width:fit-content;padding:8px 16px;font-size:13px;" onclick="adminDeleteAll()">🗑 Delete ALL Data</button>
+        </div>
       </div>
     </div>`;
+  // Apply saved collapsed state (default: all collapsed except stuck if present)
+  applyAdminSectionStates();
+}
+
+function getAdminSectionStates(){
+  try{
+    const raw=localStorage.getItem('shaxon_admin_sections');
+    if(raw)return JSON.parse(raw);
+  }catch(e){}
+  // Default state: stuck open, all others collapsed
+  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',zombie:'collapsed',consistency:'collapsed',shift:'collapsed',danger:'collapsed'};
+}
+
+function applyAdminSectionStates(){
+  const states=getAdminSectionStates();
+  document.querySelectorAll('.admin-section[data-sec]').forEach(el=>{
+    const k=el.getAttribute('data-sec');
+    if(states[k]==='collapsed')el.classList.add('collapsed');
+    else el.classList.remove('collapsed');
+  });
+}
+
+function toggleAdminSection(key){
+  const el=document.querySelector('.admin-section[data-sec="'+key+'"]');
+  if(!el)return;
+  el.classList.toggle('collapsed');
+  const states=getAdminSectionStates();
+  states[key]=el.classList.contains('collapsed')?'collapsed':'open';
+  try{localStorage.setItem('shaxon_admin_sections',JSON.stringify(states));}catch(e){}
 }
 
 // ── ZOMBIE CLEANER ──────────────────────────────────────────────────────────
@@ -2378,7 +2452,7 @@ async function testRemainingChoice(choice){
       await rpcCall('rpc_done_station', {
         p_station_id: sid,
         p_elapsed_ms: total,
-        p_done_at: nowStr(),
+        p_done_at: nowIso(),
         p_sent_qty: sentQty,
         p_mark_complete: false,
         p_next_state: 'queue',
@@ -2397,7 +2471,7 @@ async function testRemainingChoice(choice){
       await rpcCall('rpc_done_station', {
         p_station_id: sid,
         p_elapsed_ms: total,
-        p_done_at: nowStr(),
+        p_done_at: nowIso(),
         p_sent_qty: sentQty,
         p_mark_complete: false,
         p_next_state: 'waiting',
@@ -2441,7 +2515,7 @@ async function recoverStuck(lineId){
       p_from_grp: info.grp,
       p_qty: qty,
       p_total_qty: totalQty,
-      p_done_at: nowStr(),
+      p_done_at: nowIso(),
       p_note: '♻ Auto-recovered (was stuck after '+info.grp+')',
       p_client_op_id: newOpId(),
       p_close_station_id: null
@@ -2476,7 +2550,7 @@ async function recoverAllStuck(){
         p_from_grp: info.grp,
         p_qty: qty,
         p_total_qty: totalQty,
-        p_done_at: nowStr(),
+        p_done_at: nowIso(),
         p_note: '♻ Auto-recovered (bulk, was stuck after '+info.grp+')',
         p_client_op_id: newOpId(),
         p_close_station_id: null
@@ -2509,7 +2583,7 @@ async function executeUndo(){
       p_from_grp: group,
       p_qty: qty,
       p_total_qty: totalQty,
-      p_done_at: nowStr(),
+      p_done_at: nowIso(),
       p_note: '↩ Returned by Admin',
       p_client_op_id: newOpId(),
       p_close_station_id: stationId
