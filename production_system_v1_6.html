@@ -3236,19 +3236,38 @@ function detectZombies(){
       }
     }
 
-    // Type B2: Same team has MULTIPLE alive/queue stations (double-submit duplicate).
-    // Keep the newest by started_at, flag the older ones as zombie.
+    // Type B2: Same team has duplicate alive/queue stations from double-submit
+    // or the 17:07 bulk-start bug. NOT triggered by legit batch flow (done → queue).
+    // Two real-duplicate signatures:
+    //   (a) 2+ alive/queue with started_at within 10 seconds of each other (double tap)
+    //   (b) an extra alive station with sent_qty=0 alongside a real one (bulk-start ghost)
     for(const team of allTeams){
-      const dupAlive=sts.filter(s=>s.grp===team&&['active','paused','waiting','queue'].includes(s.state));
-      if(dupAlive.length>1){
-        // Sort newest first
-        dupAlive.sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
-        // All except the first (newest) are duplicates
-        dupAlive.slice(1).forEach(s=>{
-          if(!zombies.some(z=>z.stationId===s.id)){
-            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'duplicate '+shortGrp(team)+' entry (double-submit)'});
+      const teamSts=sts.filter(s=>s.grp===team);
+      const aliveTeam=teamSts.filter(s=>['active','paused','waiting','queue'].includes(s.state));
+      if(aliveTeam.length<2)continue;
+      // Sort oldest→newest
+      aliveTeam.sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
+      // Signature (b): qty=0 ghost rows when a real (qty>0) alive row exists for same team
+      const hasRealQty=aliveTeam.some(s=>(s.sent_qty||0)>0);
+      if(hasRealQty){
+        aliveTeam.forEach(s=>{
+          if((s.sent_qty||0)===0&&!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'empty '+shortGrp(team)+' entry (qty 0, bulk-start ghost)'});
           }
         });
+      }
+      // Signature (a): consecutive alive rows started within 10s = double-submit.
+      // Keep the newest of each tight cluster, flag the older ones.
+      for(let i=0;i<aliveTeam.length-1;i++){
+        const a=aliveTeam[i],b=aliveTeam[i+1];
+        const ta=new Date(a.started_at||0).getTime();
+        const tb=new Date(b.started_at||0).getTime();
+        if(!isNaN(ta)&&!isNaN(tb)&&Math.abs(tb-ta)<10000){
+          // a is older within the pair → flag a (keep b)
+          if((a.sent_qty||0)>0&&!zombies.some(z=>z.stationId===a.id)){
+            zombies.push({stationId:a.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:a.grp,state:a.state,reason:'duplicate '+shortGrp(team)+' entry (double-submit, <10s apart)'});
+          }
+        }
       }
     }
 
