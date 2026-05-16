@@ -1230,9 +1230,21 @@ async function autoMergeQueuePairs(){
       const cutWorking=sts.some(s=>s.grp==='Cutting'&&WORKING.includes(s.state));
       const ppWorking=sts.some(s=>s.grp==='Part Pull'&&WORKING.includes(s.state));
       if(cutWorking||ppWorking)continue;
-      // Keep the FIRST Cutting queue row; collapse every other Cutting/PartPull queue row.
-      const keepId=cutQueue[0].id;
+      // Keep the FIRST Cutting queue row; collapse every other Cutting/PartPull
+      // queue row. If the kept row still carries a PARTIAL:/WAITING: hold note
+      // from autoMergePartialPrep, clear it: both halves are now finished, so
+      // this row is a normal, fully-takeable queue item again.
+      const keepRow=cutQueue[0];
+      const keepId=keepRow.id;
       const collapse=[...cutQueue.slice(1),...ppQueue].filter(s=>s.id!==keepId);
+      const keepHasHold=keepRow.note&&
+        (keepRow.note.indexOf('PARTIAL:')===0||keepRow.note.indexOf('WAITING:')===0);
+      if(keepHasHold){
+        try{
+          await sb.from('stations').update({note:null,is_partial:false}).eq('id',keepId);
+          changed=true;
+        }catch(e){console.warn('auto-merge note clear failed:',e);}
+      }
       for(const st of collapse){
         try{
           await sb.from('stations').update({state:'taken'}).eq('id',st.id);
@@ -1301,20 +1313,24 @@ async function autoMergeBackorders(){
   return changed;
 }
 
-// Partial-prep merge: Cutting finished only SOME pieces (e.g. 5 of 10) while
-// Part Pull finished MORE (e.g. all 10). They created two separate queue rows.
-// Rule: only min(Cutting, PartPull) can move forward (a piece needs BOTH cut
-// and parts). Keep ONE Cutting queue row sized to that minimum; the Part Pull
-// surplus goes to 'waiting' (it waits for Cutting to finish the rest). A NOTE
-// records that Cutting still has pieces in progress, shown in queue + active.
-// Only fires when Cutting is STILL working (partial) — when Cutting is fully
-// done, autoMergeQueuePairs handles it instead (no overlap).
+// SYMMETRIC partial-prep merge. A product can only advance once it has been
+// BOTH cut AND had its parts pulled, so the movable amount is the MINIMUM of
+// what Cutting finished and what Part Pull finished — regardless of which side
+// is short. Two cases, ONE rule:
+//   A) Cutting short:  Cut 5q, PP 10q  → ready 5,  PP surplus 5 waits
+//   B) Part Pull short: Cut 6q, PP 3q  → ready 3, Cut surplus 3 waits
+// The smaller queue row becomes the READY item (note cleared, TAKE open,
+// received_qty = moveQty). The larger row is the SURPLUS: it STAYS a 'queue'
+// row (NOT 'taken' — that would lose the qty) with received_qty = the extra
+// and a 'WAITING:' note, so renderQueue shows it as WAIT (TAKE closed) until
+// the short side finishes. When the short side completes, its new queue row
+// equals the surplus → autoMergeQueuePairs folds them and the WAIT opens.
+// Only runs when the two queue qtys DIFFER (equal qty = autoMergeQueuePairs).
 let _partialMergeBusy=false;
 async function autoMergePartialPrep(){
   if(_partialMergeBusy)return false;
   _partialMergeBusy=true;
   let changed=false;
-  const WORKING=['active','paused','waiting'];
   try{
     for(const line of lines){
       if(line.fully_done)continue;
@@ -1324,39 +1340,50 @@ async function autoMergePartialPrep(){
         .sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
       const ppQueue=sts.filter(s=>s.grp==='Part Pull'&&s.state==='queue')
         .sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
-      // Cutting must STILL be working somewhere (this is what makes it partial,
-      // and what keeps autoMergeQueuePairs from touching it).
-      const cutWorking=sts.some(s=>s.grp==='Cutting'&&WORKING.includes(s.state));
-      if(!cutQueue.length||!ppQueue.length||!cutWorking)continue;
+      if(!cutQueue.length||!ppQueue.length)continue;
       const qOf=s=>{const r=s.received_qty||0;if(r>0)return r;return s.sent_qty||0;};
       const cutRow=cutQueue[0];
       const ppRow=ppQueue[0];
       const cutQ=qOf(cutRow);
       const ppQ=qOf(ppRow);
+      if(cutQ<=0||ppQ<=0)continue;
+      // Equal qty → both prep halves produced the same amount; that is the
+      // plain pair-merge case, handled by autoMergeQueuePairs. Skip here.
+      if(cutQ===ppQ)continue;
       const moveQty=Math.min(cutQ,ppQ);
-      if(moveQty<=0)continue;
-      const ppExtra=ppQ-moveQty;
-      // Cutting done-so-far for the note (sum of done/queue Cutting sent qty)
-      const cutDoneQty=sts.filter(s=>s.grp==='Cutting'&&(s.state==='done'||s.state==='queue'||s.state==='taken'))
-        .reduce((a,s)=>a+(s.sent_qty||s.received_qty||0),0);
-      const stillQty=lineQty>0?Math.max(lineQty-moveQty,0):0;
-      const note='PARTIAL: Cutting '+moveQty+(lineQty?('/'+lineQty):'')+
-        (stillQty>0?(' — '+stillQty+' pcs still in progress'):'');
+      // Smaller side = READY (the limiting amount). Larger side = SURPLUS.
+      let readyRow,surplusRow,surplusQty,readyGrp,surplusGrp;
+      if(cutQ<ppQ){
+        readyRow=cutRow;   readyGrp='Cutting';
+        surplusRow=ppRow;  surplusGrp='Part Pull'; surplusQty=ppQ-moveQty;
+      }else{
+        readyRow=ppRow;    readyGrp='Part Pull';
+        surplusRow=cutRow; surplusGrp='Cutting';   surplusQty=cutQ-moveQty;
+      }
+      const readyNote='PARTIAL: '+moveQty+(lineQty?('/'+lineQty):'')+
+        ' ready — '+surplusQty+' pcs still in '+surplusGrp;
+      const waitNote='WAITING: '+surplusQty+' pcs — waiting for '+readyGrp+
+        ' to finish the rest';
       try{
-        // Keep Cutting queue row sized to the movable minimum + carry the note
+        // READY row: sized to the movable minimum, TAKE open.
         await sb.from('stations').update({
           received_qty:moveQty,
           remaining_qty:moveQty,
           is_partial:lineQty>0?(moveQty<lineQty):false,
-          note:note
-        }).eq('id',cutRow.id);
-        // Part Pull finished its work — it must leave the Part Pull worker's
-        // screen regardless of surplus. The "5 pcs waiting for Cutting" info
-        // lives on the Cutting queue note, NOT on the Part Pull worker.
-        await sb.from('stations').update({state:'taken'}).eq('id',ppRow.id);
-        // Any extra Cutting queue rows beyond the first → collapse (dup safety)
-        for(const extra of cutQueue.slice(1)){
-          await sb.from('stations').update({state:'taken'}).eq('id',extra.id);
+          note:readyNote
+        }).eq('id',readyRow.id);
+        // SURPLUS row: stays a queue row (qty preserved!) but WAIT-locked.
+        await sb.from('stations').update({
+          received_qty:surplusQty,
+          remaining_qty:surplusQty,
+          is_partial:true,
+          note:waitNote
+        }).eq('id',surplusRow.id);
+        // Collapse any extra duplicate queue rows on either side (dup safety).
+        for(const extra of [...cutQueue.slice(1),...ppQueue.slice(1)]){
+          if(extra.id!==readyRow.id&&extra.id!==surplusRow.id){
+            await sb.from('stations').update({state:'taken'}).eq('id',extra.id);
+          }
         }
         changed=true;
       }catch(e){console.warn('partial-prep merge failed:',e);}
@@ -2234,18 +2261,23 @@ function renderQueue(){
     // active/paused/waiting. 'queue' or 'done' = that half FINISHED.
     let prematureReason=null;
     if(line){
-      // A partial-merge queue row (note starts with "PARTIAL:") is ALREADY the
-      // movable, ready quantity that the system released. It must stay TAKEable
-      // even though Cutting still has remaining pieces in progress.
+      // PARTIAL: row = the READY portion the system released → stays TAKEable
+      //   even while the other prep half is still finishing.
+      // WAITING: row = the SURPLUS portion held back → TAKE locked until the
+      //   short side catches up (then autoMergeQueuePairs opens it).
       const isPartialMerged=(qi.note&&qi.note.indexOf('PARTIAL:')===0);
-      const WORKING=['active','paused','waiting'];
-      const cutWorking=line.stations.some(s=>s.grp==='Cutting'&&s.id!==qi.id&&WORKING.includes(s.state));
-      const ppWorking=line.stations.some(s=>s.grp==='Part Pull'&&s.id!==qi.id&&WORKING.includes(s.state));
-      // Only enforce when the item is leaving Cutting/Part Pull toward C-teams.
-      const fromPrep=(qi.fromGroup==='Cutting'||qi.fromGroup==='Part Pull');
-      if(fromPrep&&!isPartialMerged){
-        if(cutWorking)prematureReason='Cutting still in progress — wait';
-        else if(ppWorking)prematureReason='Part Pull still in progress — wait';
+      const isWaitingHold =(qi.note&&qi.note.indexOf('WAITING:')===0);
+      if(isWaitingHold){
+        prematureReason='waiting for the other prep half';
+      }else{
+        const WORKING=['active','paused','waiting'];
+        const cutWorking=line.stations.some(s=>s.grp==='Cutting'&&s.id!==qi.id&&WORKING.includes(s.state));
+        const ppWorking=line.stations.some(s=>s.grp==='Part Pull'&&s.id!==qi.id&&WORKING.includes(s.state));
+        const fromPrep=(qi.fromGroup==='Cutting'||qi.fromGroup==='Part Pull');
+        if(fromPrep&&!isPartialMerged){
+          if(cutWorking)prematureReason='Cutting still in progress — wait';
+          else if(ppWorking)prematureReason='Part Pull still in progress — wait';
+        }
       }
     }
     const takeBtn=prematureReason
@@ -2255,8 +2287,9 @@ function renderQueue(){
       : `<button class="btn-take" onclick="openTakeModal('${qi.id}')">
            <span>TAKE</span><span class="vn">Nhan</span>
          </button>`;
-    const partialNote=(qi.note&&qi.note.indexOf('PARTIAL:')===0)?qi.note.replace('PARTIAL:','').trim():null;
-    return `<div class="q-card"${(prematureReason||partialNote)?' style="opacity:.95;border-left:3px solid var(--amber);"':''}>
+    const flowNote=(qi.note&&(qi.note.indexOf('PARTIAL:')===0||qi.note.indexOf('WAITING:')===0))
+      ? qi.note.replace(/^(PARTIAL:|WAITING:)/,'').trim() : null;
+    return `<div class="q-card"${(prematureReason||flowNote)?' style="opacity:.95;border-left:3px solid var(--amber);"':''}>
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
@@ -2265,7 +2298,7 @@ function renderQueue(){
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
           · ${qi.queuedAt}
           ${prematureReason?`<br><span style="color:var(--amber-dk);font-size:11px;font-style:italic;">⏳ ${prematureReason}</span>`:''}
-          ${partialNote?`<br><span style="color:var(--amber-dk);font-size:11px;font-weight:600;">⚠️ ${partialNote}</span>`:''}
+          ${flowNote?`<br><span style="color:var(--amber-dk);font-size:11px;font-weight:600;">⚠️ ${flowNote}</span>`:''}
         </div>
       </div>
       <div class="q-qty-col">
