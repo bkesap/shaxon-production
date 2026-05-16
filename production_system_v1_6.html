@@ -1680,8 +1680,16 @@ function teamBlockReason(line,team,qty){
   // Active/paused/waiting at this team — cannot send again
   const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
   if(aj)return 'already '+aj.state;
-  // Rule: if this team already DONE the same qty for this SO+item → block (duplicate).
-  // Different qty is allowed (legit back-order for the remaining pieces).
+  // PREP LOCK: Cutting / Part Pull is a one-time prep stage. Once this line
+  // has ANY done Cutting/Part Pull, that team can NEVER take it again —
+  // regardless of qty. The product has moved on to the C-team stage; prep
+  // never repeats (back-order stays with the C-team, not prep).
+  if(team==='Cutting'||team==='Part Pull'){
+    const prepDone=line.stations.some(s=>s.grp===team&&(s.state==='done'||s.state==='taken'));
+    if(prepDone)return shortGrp(team)+' already finished for this order — prep cannot repeat';
+  }
+  // C-team rule: same qty already DONE here → block (duplicate).
+  // Different qty IS allowed (legit back-order for remaining pieces).
   const doneSame=line.stations.find(s=>s.grp===team&&s.state==='done'&&(s.sent_qty||0)===qty);
   if(doneSame)return 'already done '+qty+' pcs at '+(doneSame.done_at||'?')+' (same qty — not a back-order)';
   return null;
@@ -1708,6 +1716,12 @@ function openTakeModal(qid){
 
 // Called when a team button is tapped — runs the guarded take directly.
 function pickTakeTeam(team){
+  const qi=queueItems.find(x=>x.id===takeTargetId);
+  const ctx=qi?(qi.so+' / '+qi.item+' · '+qi.qty+' pcs'):'';
+  // Ask for confirmation so an accidental tap doesn't move the job by mistake.
+  if(!confirm('Send to '+shortGrp(team)+'?\n\n'+ctx+'\n\nGui den '+shortGrp(team)+'? / Xac nhan?')){
+    return;
+  }
   confirmTake(team);
 }
 
