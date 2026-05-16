@@ -1475,6 +1475,11 @@ function onTeamChange(){
   const isAll=currentTeam==='__ALL__';
   document.getElementById('teamDisplay').textContent=isAll?'All Teams — View Only':currentTeam||'-- Select Team --';
   document.getElementById('readonlyBanner').className='readonly-banner'+(isAll?' on':'');
+  // Clear any leftover job-search text. A stale filter (e.g. an old item code
+  // like "TT8") silently hides EVERY job for the new team — the worker then
+  // sees "No active jobs" and cannot press DONE until a full page refresh.
+  const _js=document.getElementById('jobSearch');
+  if(_js)_js.value='';
   renderWorker();
 }
 
@@ -1670,6 +1675,10 @@ async function confirmStart_impl(){
     document.getElementById('inputSO').value='';
     document.getElementById('inputItem').value='';
     document.getElementById('inputQty').value='';
+    // Also clear the worker job-search; otherwise the just-started job can be
+    // hidden by a stale filter and the worker thinks nothing happened.
+    const _js2=document.getElementById('jobSearch');
+    if(_js2)_js2.value='';
     document.getElementById('itemSug').style.display='none';
     document.getElementById('soSug').style.display='none';
     document.getElementById('inputItem').classList.remove('has-sug');
