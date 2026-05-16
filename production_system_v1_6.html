@@ -1546,11 +1546,29 @@ const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing'];
 function teamBlockReason(line,team,qty){
   if(!line)return null;
   // CRITICAL: If Testing/Packing is done OR line is fully complete, NO production team can take it.
-  // Test/Pack is the final step — nothing comes after it.
   const PRODUCTION_TEAMS=['Cutting','Part Pull','C1','C2','C3','C4'];
   const tpDone=line.stations.find(s=>s.grp===FINAL&&s.state==='done');
   if((line.fully_done||tpDone)&&PRODUCTION_TEAMS.includes(team)){
     return 'order already completed (Test/Pack done)';
+  }
+  // CRITICAL: Cutting + Part Pull run in parallel. A C-team (C1-C4) can only take
+  // the item once BOTH Cutting AND Part Pull are fully done. If either is still
+  // alive (active/paused/waiting/queue), the item is NOT ready downstream.
+  const C_TEAMS=['C1','C2','C3','C4'];
+  if(C_TEAMS.includes(team)){
+    const ALIVEqp=['active','paused','waiting','queue'];
+    const cutAlive=line.stations.find(s=>s.grp==='Cutting'&&ALIVEqp.includes(s.state));
+    const ppAlive=line.stations.find(s=>s.grp==='Part Pull'&&ALIVEqp.includes(s.state));
+    const cutDone=line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
+    const ppDone=line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+    // Cutting must be finished (done or taken-after-done). If Cutting alive → not ready.
+    if(cutAlive)return 'Cutting not finished yet ('+cutAlive.state+') — wait until Cutting + Part Pull both done';
+    // Part Pull must be finished too.
+    if(ppAlive)return 'Part Pull not finished yet ('+ppAlive.state+') — wait until Cutting + Part Pull both done';
+    // Safety: if neither Cutting done nor Part Pull done exists at all, item isn't prepped.
+    if(!cutDone&&!ppDone){
+      return 'item not prepared yet (no Cutting/Part Pull done)';
+    }
   }
   // Active/paused/waiting at this team — cannot send again
   const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
