@@ -1886,7 +1886,33 @@ function renderQueue(){
   }
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
-    return `<div class="q-card">
+    const line=lines.find(l=>l.id===qi.lineId);
+    // Premature check: if this queue item is meant to go to a C-team next,
+    // both Cutting AND Part Pull must be done. If not, block TAKE here too.
+    let prematureReason=null;
+    if(line){
+      const ALIVEqp=['active','paused','waiting','queue'];
+      const cutAlive=line.stations.find(s=>s.grp==='Cutting'&&s.id!==qi.id&&ALIVEqp.includes(s.state));
+      const ppAlive=line.stations.find(s=>s.grp==='Part Pull'&&s.id!==qi.id&&ALIVEqp.includes(s.state));
+      const cutDone=line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
+      const ppDone=line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
+      // Only enforce when the item is leaving Cutting/Part Pull stage toward C-teams.
+      // If it comes from a C-team or Test/Pack, this gate does not apply.
+      const fromPrep=(qi.fromGroup==='Cutting'||qi.fromGroup==='Part Pull');
+      if(fromPrep){
+        if(cutAlive)prematureReason='Cutting still '+cutAlive.state+' — not ready for next team';
+        else if(ppAlive)prematureReason='Part Pull still '+ppAlive.state+' — not ready for next team';
+        else if(!cutDone&&!ppDone)prematureReason='Cutting & Part Pull not done yet';
+      }
+    }
+    const takeBtn=prematureReason
+      ? `<button class="btn-take" disabled style="background:var(--bg2);color:var(--txt3);cursor:not-allowed;border:1px solid var(--bdr2);">
+           <span>⏳ WAIT</span><span class="vn" style="font-size:9px;">Cho</span>
+         </button>`
+      : `<button class="btn-take" onclick="openTakeModal('${qi.id}')">
+           <span>TAKE</span><span class="vn">Nhan</span>
+         </button>`;
+    return `<div class="q-card"${prematureReason?' style="opacity:.7;border-left:3px solid var(--amber);"':''}>
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
@@ -1894,15 +1920,14 @@ function renderQueue(){
           <span class="q-from">✓ ${shortGrp(qi.fromGroup)}</span>
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
           · ${qi.queuedAt}
+          ${prematureReason?`<br><span style="color:var(--amber-dk);font-size:11px;font-style:italic;">⏳ ${prematureReason}</span>`:''}
         </div>
       </div>
       <div class="q-qty-col">
         <div class="q-qty-n">${qi.qty}</div>
         <div class="q-qty-l">pcs</div>
       </div>
-      <button class="btn-take" onclick="openTakeModal('${qi.id}')">
-        <span>TAKE</span><span class="vn">Nhan</span>
-      </button>
+      ${takeBtn}
     </div>`;
   }).join('');
 }
@@ -2539,6 +2564,18 @@ function renderAdmin(){
         </div>
       </div>
     </div>
+    <div class="admin-section" data-sec="flowfix">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('flowfix')">🧹 Flow Cleanup / Akis temizligi</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Finds items that broke the flow: a product is <strong>already at a C-team or Test/Pack (done/taken)</strong>, but <strong>Cutting or Part Pull is still open</strong> behind it. Since the C-team could only work it if prep was actually finished, the leftover Cutting/Part Pull is garbage data → it will be marked <strong>done</strong> (the product stays where it is). <strong>Preview first.</strong>
+          </div>
+          <button onclick="findFlowGarbage()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧹 Find Flow Garbage</button>
+          <div id="flowfixResult" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
     <div class="admin-section" data-sec="shift">
       <div class="admin-section-hdr" onclick="toggleAdminSection('shift')">⏱ Shift Settings / Cai dat ca lam viec</div>
       <div class="admin-section-body">
@@ -2587,7 +2624,7 @@ function getAdminSectionStates(){
     if(raw)return JSON.parse(raw);
   }catch(e){}
   // Default state: stuck open, all others collapsed
-  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',shift:'collapsed',danger:'collapsed'};
+  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',flowfix:'collapsed',shift:'collapsed',danger:'collapsed'};
 }
 
 function applyAdminSectionStates(){
@@ -3559,6 +3596,98 @@ async function fixInconsistency(idx,action){
     console.error('Fix error:',err);
     setSyncDot('error');
     showToast('Fix failed','red');
+  }
+}
+
+// ── FLOW CLEANUP ────────────────────────────────────────────────────────────
+// Detects leftover Cutting/Part Pull that's still open while the product has
+// already moved forward (a C-team or Test/Pack reached done/taken).
+function detectFlowGarbage(){
+  const C_TEAMS=['C1','C2','C3','C4'];
+  const FINAL='Testing / Packing';
+  const ALIVEqp=['active','paused','waiting','queue'];
+  const out=[];
+  for(const line of lines){
+    const sts=line.stations||[];
+    // "Moved forward" = a C-team or Test/Pack reached done OR taken (proves prep was actually finished)
+    const movedForward=sts.some(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL)&&(s.state==='done'||s.state==='taken'));
+    if(!movedForward)continue;
+    // Any Cutting / Part Pull still open behind it = garbage (work was really done, just not marked)
+    sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&ALIVEqp.includes(s.state)).forEach(s=>{
+      out.push({
+        stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,
+        grp:s.grp,state:s.state,
+        reason:s.grp+' still '+s.state+' but product already moved to a C-team/Test'
+      });
+    });
+  }
+  return out;
+}
+
+function findFlowGarbage(){
+  const result=document.getElementById('flowfixResult');
+  const list=detectFlowGarbage();
+  result.style.display='block';
+  if(!list.length){
+    result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No flow garbage found. All Cutting/Part Pull states are consistent with downstream progress.</div>`;
+    return;
+  }
+  const bySo={};
+  list.forEach(x=>{(bySo[x.so]=bySo[x.so]||[]).push(x);});
+  const rows=list.slice(0,300).map(x=>`<tr>
+    <td style="padding:6px 10px;font-weight:600;color:var(--blue);">${x.so}</td>
+    <td style="padding:6px 10px;" class="item-num" title="${x.item}">${x.item}</td>
+    <td style="padding:6px 10px;">${x.qty}</td>
+    <td style="padding:6px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${x.grp==='Cutting'?'var(--blue-lt)':'#F3E5F5'};color:${x.grp==='Cutting'?'var(--blue-dk)':'#6a1b9a'};">${x.grp}</span></td>
+    <td style="padding:6px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:var(--amber-lt);color:var(--amber-dk);">${x.state}</span></td>
+    <td style="padding:6px 10px;font-size:11px;color:var(--txt2);font-style:italic;">${x.reason}</td>
+  </tr>`).join('');
+  window._flowGarbagePending=list;
+  result.innerHTML=`
+    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
+      🧹 <strong>${list.length} leftover station(s)</strong> across <strong>${Object.keys(bySo).length} SO(s)</strong>. These will be marked <strong>done</strong> (product stays where it currently is — nothing moves, nothing deleted).
+    </div>
+    <table class="admin-table" style="margin-bottom:12px;">
+      <thead><tr><th style="width:90px;">SO</th><th>Item</th><th style="width:60px;">Qty</th><th style="width:90px;">Station</th><th style="width:80px;">State</th><th>Reason</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${list.length>300?`<div style="font-size:11px;color:var(--txt3);margin-bottom:8px;">Showing first 300 of ${list.length}. All will be fixed.</div>`:''}
+    <button onclick="fixFlowGarbage()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">✓ Mark All ${list.length} as Done</button>`;
+}
+
+async function fixFlowGarbage(){
+  const list=window._flowGarbagePending||[];
+  if(!list.length){showToast('Nothing to fix','red');return;}
+  if(!confirm('Mark '+list.length+' leftover Cutting/Part Pull station(s) as DONE?\nThe product stays where it is. Nothing is deleted or moved.\n\nDanh dau '+list.length+' tram da xong?'))return;
+  setSyncDot('syncing');
+  showToast('Fixing '+list.length+' stations...');
+  try{
+    let fixed=0;
+    for(const x of list){
+      // Re-check it's still alive before touching (avoid racing with realtime)
+      const ln=lines.find(l=>l.id===x.lineId);
+      const st=ln&&ln.stations.find(s=>s.id===x.stationId);
+      if(!st)continue;
+      if(st.state==='done'||st.state==='taken')continue;
+      const j=jobs.find(jj=>jj.stationId===x.stationId);
+      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
+      await sb.from('stations').update({
+        state:'done',
+        elapsed_ms:elapsed,
+        done_at:st.done_at||nowStr()
+      }).eq('id',x.stationId);
+      fixed++;
+    }
+    await loadAll();
+    document.getElementById('flowfixResult').style.display='none';
+    showToast('✅ Fixed '+fixed+' leftover station(s) / Da sua '+fixed,'green');
+    setSyncDot('ok');
+    window._flowGarbagePending=null;
+    renderAdmin();
+  }catch(err){
+    console.error('Flow fix error:',err);
+    setSyncDot('error');
+    showToast('Fix failed: '+(err.message||''),'red');
   }
 }
 
