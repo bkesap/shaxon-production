@@ -2467,12 +2467,16 @@ function renderAdmin(){
       <div class="admin-section-body">
         <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
           <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-            Upload your <strong>currently OPEN sales order list</strong> from SAP/Power BI (any file with an SO number column). Any active job in the system whose SO is <strong>NOT</strong> in this list = order closed in SAP → will be marked complete. <strong>Preview first — nothing changes until you confirm.</strong>
+            Enter your <strong>currently OPEN SO numbers</strong> below (paste from anywhere — spaces, commas, or new lines all work). Any active job whose SO is <strong>NOT</strong> in your list = closed in SAP → marked complete. <strong>Preview first — nothing changes until you confirm.</strong>
           </div>
+          <textarea id="closeSOText" placeholder="801708 801754 801763 801809 801845 ..." rows="4"
+            style="width:100%;padding:10px 12px;font-size:14px;font-family:monospace;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;resize:vertical;box-sizing:border-box;"
+            autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other"></textarea>
           <div id="closeStatus" style="font-size:12px;color:var(--txt3);"></div>
           <input type="file" id="closeFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleCloseFile(event)"/>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="document.getElementById('closeFile').click()" style="padding:8px 16px;font-size:13px;background:#FF9800;color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload Open SO List</button>
+            <button onclick="checkCloseFromText()" style="padding:8px 16px;font-size:13px;background:#FF9800;color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;">🔍 Find Orders to Close</button>
+            <button onclick="document.getElementById('closeFile').click()" style="padding:8px 16px;font-size:13px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-weight:500;">or Upload File</button>
           </div>
           <div id="closePreview" style="display:none;"></div>
         </div>
@@ -2911,6 +2915,60 @@ async function loadSOStatus(){
 }
 
 // ── CLOSE FINISHED ORDERS (SAP SYNC) ────────────────────────────────────────
+// Shared: given a Set of open SO numbers, find lines to close and show preview
+function showClosePreview(openSet,sourceLabel){
+  if(!openSet.size){showToast('No SO numbers found','red');return;}
+  const toClose=[];
+  for(const line of lines){
+    if(line.fully_done)continue;
+    const so=String(line.so||'').trim().toUpperCase();
+    if(!so)continue;
+    if(!openSet.has(so))toClose.push(line);
+  }
+  const bySo={};
+  toClose.forEach(l=>{(bySo[l.so]=bySo[l.so]||[]).push(l);});
+  const soList=Object.keys(bySo);
+  const preview=document.getElementById('closePreview');
+  preview.style.display='block';
+  if(!toClose.length){
+    preview.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;margin-top:8px;font-size:13px;color:#1b5e20;">✅ All active jobs match your open SO list. Nothing to close.<br><span style="color:var(--txt2);">${openSet.size} open SOs (${sourceLabel}) · ${lines.filter(l=>!l.fully_done).length} active lines all matched.</span></div>`;
+    return;
+  }
+  const rowsHtml=soList.slice(0,300).map(so=>{
+    const items=bySo[so];
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:600;color:var(--blue);">${so}</td>
+      <td style="padding:6px 10px;">${items.length} item(s)</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--txt2);">${items.slice(0,4).map(i=>i.item).join(', ')}${items.length>4?' +'+(items.length-4)+' more':''}</td>
+    </tr>`;
+  }).join('');
+  window._pendingClose=toClose;
+  preview.innerHTML=`
+    <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-top:8px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
+      ⚠️ <strong>${soList.length} SO(s) / ${toClose.length} line(s)</strong> are active here but NOT in your open list (${sourceLabel}) → likely closed in SAP.
+      <br><span style="color:var(--txt2);">You entered ${openSet.size} open SOs. These will be marked <strong>complete</strong>. History kept; they move to Completed.</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg1);border-radius:6px;overflow:hidden;margin-bottom:10px;">
+      <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">SO</th><th style="padding:6px 10px;text-align:left;">Lines</th><th style="padding:6px 10px;text-align:left;">Items</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    ${soList.length>300?`<div style="font-size:11px;color:var(--txt3);margin-bottom:8px;">Showing first 300 of ${soList.length} SOs. All ${toClose.length} lines will be closed.</div>`:''}
+    <div style="display:flex;gap:8px;">
+      <button onclick="commitCloseOrders()" style="padding:9px 18px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:600;">🔒 Close All ${toClose.length} Line(s)</button>
+      <button onclick="document.getElementById('closePreview').style.display='none'" style="padding:9px 18px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-size:13px;">Cancel</button>
+    </div>`;
+}
+
+// Parse pasted SO text — split on any non-alphanumeric (spaces, commas, newlines, tabs)
+function checkCloseFromText(){
+  const raw=document.getElementById('closeSOText').value||'';
+  const tokens=raw.split(/[^A-Za-z0-9\-]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);
+  const openSet=new Set(tokens);
+  if(!openSet.size){showToast('Paste at least one SO number','red');return;}
+  document.getElementById('closeStatus').textContent='Checking against '+openSet.size+' SO number(s) you entered...';
+  showClosePreview(openSet,'pasted list');
+}
+
 async function handleCloseFile(event){
   const file=event.target.files&&event.target.files[0];
   event.target.value='';
@@ -2929,59 +2987,12 @@ async function handleCloseFile(event){
       showToast('Cannot find SO column. Headers: '+Object.keys(sample).join(', '),'red');
       return;
     }
-    // Build set of OPEN SO numbers from the file (normalized uppercase, trimmed)
     const openSet=new Set();
     for(const r of rows){
       const so=String(r[soCol]||'').trim().toUpperCase();
       if(so)openSet.add(so);
     }
-    if(!openSet.size){showToast('No SO numbers found in file','red');return;}
-
-    // Find active (not fully_done) lines whose SO is NOT in the open list → these are closed in SAP
-    const toClose=[];
-    for(const line of lines){
-      if(line.fully_done)continue;
-      const so=String(line.so||'').trim().toUpperCase();
-      if(!so)continue;
-      if(!openSet.has(so)){
-        toClose.push(line);
-      }
-    }
-
-    // Group by SO for display
-    const bySo={};
-    toClose.forEach(l=>{(bySo[l.so]=bySo[l.so]||[]).push(l);});
-    const soList=Object.keys(bySo);
-
-    const preview=document.getElementById('closePreview');
-    preview.style.display='block';
-    if(!toClose.length){
-      preview.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;margin-top:8px;font-size:13px;color:#1b5e20;">✅ All active jobs match the open SO list. Nothing to close.<br><span style="color:var(--txt2);">${openSet.size} open SOs in file · ${lines.filter(l=>!l.fully_done).length} active lines all matched.</span></div>`;
-      return;
-    }
-    const rowsHtml=soList.slice(0,200).map(so=>{
-      const items=bySo[so];
-      return `<tr>
-        <td style="padding:6px 10px;font-weight:600;color:var(--blue);">${so}</td>
-        <td style="padding:6px 10px;">${items.length} item(s)</td>
-        <td style="padding:6px 10px;font-size:11px;color:var(--txt2);">${items.slice(0,4).map(i=>i.item).join(', ')}${items.length>4?' +'+(items.length-4)+' more':''}</td>
-      </tr>`;
-    }).join('');
-    window._pendingClose=toClose;
-    preview.innerHTML=`
-      <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-top:8px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
-        ⚠️ <strong>${soList.length} SO(s) / ${toClose.length} line(s)</strong> are active here but NOT in your open SO list → likely closed in SAP.
-        <br><span style="color:var(--txt2);">File has ${openSet.size} open SOs. These will be marked <strong>complete</strong> (fully_done=true). History is kept; they move to Completed.</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg1);border-radius:6px;overflow:hidden;margin-bottom:10px;">
-        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">SO</th><th style="padding:6px 10px;text-align:left;">Lines</th><th style="padding:6px 10px;text-align:left;">Items</th></tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-      ${soList.length>200?`<div style="font-size:11px;color:var(--txt3);margin-bottom:8px;">Showing first 200 of ${soList.length} SOs. All ${toClose.length} lines will be closed.</div>`:''}
-      <div style="display:flex;gap:8px;">
-        <button onclick="commitCloseOrders()" style="padding:9px 18px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:600;">🔒 Close All ${toClose.length} Line(s)</button>
-        <button onclick="document.getElementById('closePreview').style.display='none'" style="padding:9px 18px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-size:13px;">Cancel</button>
-      </div>`;
+    showClosePreview(openSet,'file');
   }catch(err){
     console.error('Close file parse error:',err);
     showToast('Failed to parse: '+(err.message||''),'red');
