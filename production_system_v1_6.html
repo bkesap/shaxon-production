@@ -1243,6 +1243,16 @@ function handleStart(){
         `San pham nay da duoc danh dau HOAN THANH. Khong the bat dau lai.`,'');
       return;
     }
+    // CRITICAL: Test/Pack is the final step. If it's done, no production team may start.
+    const PRODUCTION_TEAMS=['Cutting','Part Pull','C1','C2','C3','C4'];
+    const tpDone=existingLine.stations.find(s=>s.grp===FINAL&&s.state==='done');
+    if(tpDone&&PRODUCTION_TEAMS.includes(team)){
+      showWarn('red','Order Already Finished','Da qua Test/Pack',
+        `<strong>${item}</strong> already passed <strong>Test/Packing</strong> (done at ${tpDone.done_at||'?'}). No production step can run after Test/Pack.`,
+        `San pham nay da qua buoc Test/Pack. Khong the bat dau buoc san xuat nao nua.`,
+        `<div class="modal-detail-row">Test/Pack completed: <strong>${tpDone.done_at||'?'}</strong></div>`);
+      return;
+    }
     if(aliveStations.length>0){
       const states=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
       const activeStation=aliveStations.find(s=>s.state==='active'||s.state==='paused');
@@ -1465,7 +1475,14 @@ async function confirmTestComplete(){
   await executeDone(sid,sentQty,0,true,j,availableQty||sentQty);
 }
 
+let _executeDoneLock=false;
 async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
+  // Double-submit guard — block rapid double taps / re-entry while RPC in flight
+  if(_executeDoneLock){
+    console.warn('executeDone blocked — already in progress');
+    return;
+  }
+  _executeDoneLock=true;
   const add=j.state==='active'?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
   setSyncDot('syncing');
@@ -1517,6 +1534,8 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Error — will retry when back online / Loi','red');
+  }finally{
+    _executeDoneLock=false;
   }
 }
 
@@ -1526,6 +1545,14 @@ const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing'];
 // Returns reason a team cannot take this queue item, or null if allowed.
 function teamBlockReason(line,team,qty){
   if(!line)return null;
+  // CRITICAL: If Testing/Packing is done OR line is fully complete, NO production team can take it.
+  // Test/Pack is the final step — nothing comes after it.
+  const PRODUCTION_TEAMS=['Cutting','Part Pull','C1','C2','C3','C4'];
+  const tpDone=line.stations.find(s=>s.grp===FINAL&&s.state==='done');
+  if((line.fully_done||tpDone)&&PRODUCTION_TEAMS.includes(team)){
+    return 'order already completed (Test/Pack done)';
+  }
+  // Also block Test/Pack itself from being taken twice if already done with same qty
   // Active/paused/waiting at this team — cannot send again
   const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
   if(aj)return 'already '+aj.state;
@@ -3071,12 +3098,40 @@ function detectZombies(){
       }
     }
 
+    // Type B2: Same team has MULTIPLE alive/queue stations (double-submit duplicate).
+    // Keep the newest by started_at, flag the older ones as zombie.
+    for(const team of allTeams){
+      const dupAlive=sts.filter(s=>s.grp===team&&['active','paused','waiting','queue'].includes(s.state));
+      if(dupAlive.length>1){
+        // Sort newest first
+        dupAlive.sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
+        // All except the first (newest) are duplicates
+        dupAlive.slice(1).forEach(s=>{
+          if(!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'duplicate '+shortGrp(team)+' entry (double-submit)'});
+          }
+        });
+      }
+    }
+
     // Type C: Item fully_done but stations still alive (skip Test/Pack with done_at — consistency tool handles)
     if(isComplete){
       sts.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
         if(!zombies.some(z=>z.stationId===s.id)){
           if(s.grp===FINAL_TEAM&&s.done_at)return;
           zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Item already completed'});
+        }
+      });
+    }
+
+    // Type E: Test/Pack is DONE but a production team (Cutting/PP/C1-C4) is still alive.
+    // Test/Pack is the final step — nothing should be alive after it finishes.
+    const tpDone=sts.find(s=>s.grp===FINAL_TEAM&&s.state==='done');
+    if(tpDone){
+      const PROD=['Cutting','Part Pull','C1','C2','C3','C4'];
+      sts.filter(s=>PROD.includes(s.grp)&&ALIVE.includes(s.state)).forEach(s=>{
+        if(!zombies.some(z=>z.stationId===s.id)){
+          zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:'Test/Pack already done — '+shortGrp(s.grp)+' should not be '+s.state});
         }
       });
     }
