@@ -750,6 +750,21 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
 </div>
 
+<div class="modal-overlay" id="takeConfirmModal">
+  <div class="modal-box">
+    <div class="modal-hdr blue"><div class="modal-title">Confirm / Xac nhan</div></div>
+    <div class="modal-body" style="text-align:center;padding:22px 18px;">
+      <div style="font-size:15px;color:var(--txt2);margin-bottom:8px;">Send this job to</div>
+      <div id="takeConfirmTeam" style="font-size:26px;font-weight:700;color:var(--blue);margin-bottom:14px;"></div>
+      <div id="takeConfirmCtx" style="font-size:14px;color:var(--txt1);background:var(--bg2);border-radius:var(--r-md);padding:10px 12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('takeConfirmModal')">Cancel / Huy</button>
+      <button class="btn-ok" id="takeConfirmYes">✓ Yes, send / Gui</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="noteModal">
   <div class="modal-box">
     <div class="modal-hdr blue"><div class="modal-title">Add / Edit Note</div><div class="modal-sub" id="noteCtx"></div></div>
@@ -1112,7 +1127,9 @@ async function loadAll(){
     // Runs every load so it fixes BOTH old garbage and new data. Returns true
     // if it changed anything (then we reload once to get fresh state).
     const healed=await autoMergeQueuePairs();
-    if(healed){
+    const partialed=await autoMergePartialPrep();
+    const folded=await autoMergeBackorders();
+    if(healed||partialed||folded){
       const {data:sd2}=await sb.from('stations').select('*').order('started_at');
       if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
     }
@@ -1161,6 +1178,135 @@ async function autoMergeQueuePairs(){
     }
   }finally{
     _autoMergeBusy=false;
+  }
+  return changed;
+}
+
+// Back-order folding: when the SAME C-team is working the SAME SO+item across
+// more than one alive (active/paused/waiting) station, those are back-order
+// pieces of one job — fold them into a single station and sum the quantities.
+// Keeps the OLDEST station (the one already being worked) and adds the others'
+// received qty into it, then marks the extras 'taken'. State-based: runs every
+// load so it also heals data created before this rule existed.
+let _boMergeBusy=false;
+async function autoMergeBackorders(){
+  if(_boMergeBusy)return false;
+  _boMergeBusy=true;
+  let changed=false;
+  const C_TEAMS=['C1','C2','C3','C4'];
+  const ALIVE=['active','paused','waiting'];
+  try{
+    for(const line of lines){
+      if(line.fully_done)continue;
+      const lineQty=parseInt(line.qty)||0;
+      for(const team of C_TEAMS){
+        const alive=(line.stations||[])
+          .filter(s=>s.grp===team&&ALIVE.includes(s.state))
+          .sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
+        if(alive.length<2)continue; // nothing to fold
+        const keep=alive[0];
+        const extras=alive.slice(1);
+        // Sum the received qty of every piece (fallback to remaining/sent if
+        // received not set), cap at the line total so it can't overshoot.
+        const pieceQty=s=>{
+          const r=s.received_qty||0;
+          if(r>0)return r;
+          const rem=s.remaining_qty||0;
+          if(rem>0)return rem;
+          return s.sent_qty||0;
+        };
+        let total=pieceQty(keep);
+        for(const ex of extras)total+=pieceQty(ex);
+        if(lineQty>0&&total>lineQty)total=lineQty;
+        try{
+          await sb.from('stations').update({
+            received_qty:total,
+            remaining_qty:total,
+            is_partial:lineQty>0?(total<lineQty):false
+          }).eq('id',keep.id);
+          for(const ex of extras){
+            await sb.from('stations').update({state:'taken'}).eq('id',ex.id);
+          }
+          changed=true;
+        }catch(e){console.warn('back-order fold failed:',e);}
+      }
+    }
+  }finally{
+    _boMergeBusy=false;
+  }
+  return changed;
+}
+
+// Partial-prep merge: Cutting finished only SOME pieces (e.g. 5 of 10) while
+// Part Pull finished MORE (e.g. all 10). They created two separate queue rows.
+// Rule: only min(Cutting, PartPull) can move forward (a piece needs BOTH cut
+// and parts). Keep ONE Cutting queue row sized to that minimum; the Part Pull
+// surplus goes to 'waiting' (it waits for Cutting to finish the rest). A NOTE
+// records that Cutting still has pieces in progress, shown in queue + active.
+// Only fires when Cutting is STILL working (partial) — when Cutting is fully
+// done, autoMergeQueuePairs handles it instead (no overlap).
+let _partialMergeBusy=false;
+async function autoMergePartialPrep(){
+  if(_partialMergeBusy)return false;
+  _partialMergeBusy=true;
+  let changed=false;
+  const WORKING=['active','paused','waiting'];
+  try{
+    for(const line of lines){
+      if(line.fully_done)continue;
+      const sts=line.stations||[];
+      const lineQty=parseInt(line.qty)||0;
+      const cutQueue=sts.filter(s=>s.grp==='Cutting'&&s.state==='queue')
+        .sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
+      const ppQueue=sts.filter(s=>s.grp==='Part Pull'&&s.state==='queue')
+        .sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0));
+      // Cutting must STILL be working somewhere (this is what makes it partial,
+      // and what keeps autoMergeQueuePairs from touching it).
+      const cutWorking=sts.some(s=>s.grp==='Cutting'&&WORKING.includes(s.state));
+      if(!cutQueue.length||!ppQueue.length||!cutWorking)continue;
+      const qOf=s=>{const r=s.received_qty||0;if(r>0)return r;return s.sent_qty||0;};
+      const cutRow=cutQueue[0];
+      const ppRow=ppQueue[0];
+      const cutQ=qOf(cutRow);
+      const ppQ=qOf(ppRow);
+      const moveQty=Math.min(cutQ,ppQ);
+      if(moveQty<=0)continue;
+      const ppExtra=ppQ-moveQty;
+      // Cutting done-so-far for the note (sum of done/queue Cutting sent qty)
+      const cutDoneQty=sts.filter(s=>s.grp==='Cutting'&&(s.state==='done'||s.state==='queue'||s.state==='taken'))
+        .reduce((a,s)=>a+(s.sent_qty||s.received_qty||0),0);
+      const stillQty=lineQty>0?Math.max(lineQty-moveQty,0):0;
+      const note='PARTIAL: Cutting '+moveQty+(lineQty?('/'+lineQty):'')+
+        (stillQty>0?(' — '+stillQty+' pcs still in progress'):'');
+      try{
+        // Keep Cutting queue row sized to the movable minimum + carry the note
+        await sb.from('stations').update({
+          received_qty:moveQty,
+          remaining_qty:moveQty,
+          is_partial:lineQty>0?(moveQty<lineQty):false,
+          note:note
+        }).eq('id',cutRow.id);
+        // Part Pull surplus waits for Cutting; exact match → just collapse it
+        if(ppExtra>0){
+          await sb.from('stations').update({
+            state:'waiting',
+            received_qty:ppExtra,
+            remaining_qty:ppExtra,
+            is_partial:true,
+            note:'WAITING: holds '+ppExtra+' pcs until Cutting finishes'
+          }).eq('id',ppRow.id);
+        }else{
+          await sb.from('stations').update({state:'taken'}).eq('id',ppRow.id);
+        }
+        // Any extra Cutting queue rows beyond the first → collapse (dup safety)
+        for(const extra of cutQueue.slice(1)){
+          await sb.from('stations').update({state:'taken'}).eq('id',extra.id);
+        }
+        changed=true;
+      }catch(e){console.warn('partial-prep merge failed:',e);}
+    }
+  }finally{
+    _partialMergeBusy=false;
   }
   return changed;
 }
@@ -1216,12 +1362,15 @@ function rebuildQueue(){
   queueItems=[];
   lines.forEach(line=>{
     line.stations.filter(s=>s.state==='queue').forEach(st=>{
+      // For partial-prep merged rows, received_qty holds the movable amount.
+      const q=(st.received_qty&&st.received_qty>0)?st.received_qty:(st.sent_qty||parseInt(line.qty)||0);
       queueItems.push({
         id:st.id,lineId:line.id,
         so:line.so,item:line.item,
-        qty:st.sent_qty||parseInt(line.qty)||0,
+        qty:q,
         totalQty:parseInt(line.qty)||0,
-        fromGroup:st.grp,queuedAt:st.done_at||''
+        fromGroup:st.grp,queuedAt:st.done_at||'',
+        note:st.note||''
       });
     });
   });
@@ -1677,21 +1826,23 @@ function teamBlockReason(line,team,qty){
       return 'item not prepared yet (no Cutting / Part Pull)';
     }
   }
-  // Active/paused/waiting at this team — cannot send again
-  const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
-  if(aj)return 'already '+aj.state;
   // PREP LOCK: Cutting / Part Pull is a one-time prep stage. Once this line
-  // has ANY done Cutting/Part Pull, that team can NEVER take it again —
-  // regardless of qty. The product has moved on to the C-team stage; prep
-  // never repeats (back-order stays with the C-team, not prep).
+  // has ANY done/taken Cutting/Part Pull, that team can NEVER take it again —
+  // regardless of qty. Prep never repeats.
   if(team==='Cutting'||team==='Part Pull'){
     const prepDone=line.stations.some(s=>s.grp===team&&(s.state==='done'||s.state==='taken'));
     if(prepDone)return shortGrp(team)+' already finished for this order — prep cannot repeat';
+    // Prep can't take if it's currently working either.
+    const prepAlive=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
+    if(prepAlive)return 'already '+prepAlive.state;
+    return null;
   }
-  // C-team rule: same qty already DONE here → block (duplicate).
-  // Different qty IS allowed (legit back-order for remaining pieces).
-  const doneSame=line.stations.find(s=>s.grp===team&&s.state==='done'&&(s.sent_qty||0)===qty);
-  if(doneSame)return 'already done '+qty+' pcs at '+(doneSame.done_at||'?')+' (same qty — not a back-order)';
+  // C-TEAMS: back-order is normal — the same SO+item is processed piece by
+  // piece, so the SAME qty arriving again is a legit remaining-piece, NOT a
+  // duplicate. We therefore DO NOT block a C-team on "same qty done" or on
+  // "already active". Real double-taps are stopped by the action guard +
+  // zombie Type B2. When a C-team is already working this item and another
+  // back-order piece arrives, executeDone's merge step folds them together.
   return null;
 }
 
@@ -1714,15 +1865,21 @@ function openTakeModal(qid){
   document.getElementById('takeModal').classList.add('open');
 }
 
-// Called when a team button is tapped — runs the guarded take directly.
+// Called when a team button is tapped — shows a styled confirm modal
+// (browser confirm() can misbehave on tablets).
 function pickTakeTeam(team){
   const qi=queueItems.find(x=>x.id===takeTargetId);
-  const ctx=qi?(qi.so+' / '+qi.item+' · '+qi.qty+' pcs'):'';
-  // Ask for confirmation so an accidental tap doesn't move the job by mistake.
-  if(!confirm('Send to '+shortGrp(team)+'?\n\n'+ctx+'\n\nGui den '+shortGrp(team)+'? / Xac nhan?')){
-    return;
-  }
-  confirmTake(team);
+  document.getElementById('takeConfirmTeam').textContent=shortGrp(team);
+  document.getElementById('takeConfirmCtx').textContent=qi?(qi.so+' / '+qi.item+' · '+qi.qty+' pcs'):'';
+  const yesBtn=document.getElementById('takeConfirmYes');
+  // Replace the button to clear any previous click handler
+  const fresh=yesBtn.cloneNode(true);
+  yesBtn.parentNode.replaceChild(fresh,yesBtn);
+  fresh.addEventListener('click',()=>{
+    closeModal('takeConfirmModal');
+    confirmTake(team);
+  });
+  document.getElementById('takeConfirmModal').classList.add('open');
 }
 
 async function confirmTake_impl(team){
@@ -1900,7 +2057,15 @@ function renderWorker(){
     const cardCls=isWaiting?'partial':j.state==='paused'?'paused':'';
     const stateTag=j.state==='paused'?`<span class="timer-state">PAUSED</span>`:'';
     const teamTag=isAll?`<div class="jc-team-tag">📍 ${shortGrp(j.group)}</div>`:'';
-    const noteDisp=j.note?`<div class="job-note">📝 ${j.note}</div>`:'';
+    let noteDisp='';
+    if(j.note){
+      const isFlowNote=(j.note.indexOf('PARTIAL:')===0||j.note.indexOf('WAITING:')===0);
+      if(isFlowNote){
+        noteDisp=`<div class="job-note" style="background:var(--amber-lt);color:var(--amber-dk);border:1px solid var(--amber);font-weight:600;">⚠️ ${j.note.replace(/^(PARTIAL:|WAITING:)/,'').trim()}</div>`;
+      }else{
+        noteDisp=`<div class="job-note">📝 ${j.note}</div>`;
+      }
+    }
 
     // Smart qty progress block for waiting jobs
     let qtyBlock='';
@@ -2031,7 +2196,8 @@ function renderQueue(){
       : `<button class="btn-take" onclick="openTakeModal('${qi.id}')">
            <span>TAKE</span><span class="vn">Nhan</span>
          </button>`;
-    return `<div class="q-card"${prematureReason?' style="opacity:.7;border-left:3px solid var(--amber);"':''}>
+    const partialNote=(qi.note&&qi.note.indexOf('PARTIAL:')===0)?qi.note.replace('PARTIAL:','').trim():null;
+    return `<div class="q-card"${(prematureReason||partialNote)?' style="opacity:.95;border-left:3px solid var(--amber);"':''}>
       <div class="q-info">
         <div class="q-so">${qi.so}</div>
         <div class="q-item">${qi.item}</div>
@@ -2040,6 +2206,7 @@ function renderQueue(){
           ${isPartial?`<span class="q-partial">Partial — ${qi.qty}/${qi.totalQty} pcs</span>`:''}
           · ${qi.queuedAt}
           ${prematureReason?`<br><span style="color:var(--amber-dk);font-size:11px;font-style:italic;">⏳ ${prematureReason}</span>`:''}
+          ${partialNote?`<br><span style="color:var(--amber-dk);font-size:11px;font-weight:600;">⚠️ ${partialNote}</span>`:''}
         </div>
       </div>
       <div class="q-qty-col">
