@@ -414,7 +414,8 @@ body{font-family:var(--font);background:var(--bg2);}
 .ds-stuck-card{position:relative;}
 
 /* v1.7 — Pending offline ops indicator */
-.pending-ops-badge{display:none;padding:6px 10px;background:rgba(255,200,0,.18);color:#FFD54F;border:1px solid rgba(255,200,0,.4);border-radius:14px;font-size:11px;font-weight:600;margin-right:10px;align-items:center;gap:6px;}
+.pending-ops-badge{display:none;padding:6px 10px;background:rgba(255,200,0,.18);color:#FFD54F;border:1px solid rgba(255,200,0,.4);border-radius:14px;font-size:11px;font-weight:600;margin-right:10px;align-items:center;gap:6px;cursor:pointer;user-select:none;}
+.pending-ops-badge:hover{background:rgba(255,200,0,.3);}
 .pending-ops-badge.on{display:inline-flex;}
 .pending-ops-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:#FFD54F;animation:pa 1.2s infinite;}
 </style>
@@ -445,7 +446,22 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
   <div style="flex:1;"></div>
-  <div id="pendingOpsBadge" class="pending-ops-badge">0 pending sync</div>
+  <div id="pendingOpsBadge" class="pending-ops-badge" onclick="openPendingModal()" title="Tap to view / retry">0 pending sync</div>
+</div>
+
+<div class="modal-overlay" id="pendingModal">
+  <div class="modal-box">
+    <div class="modal-hdr blue"><div class="modal-title">Pending Sync / Cho dong bo</div><div class="modal-sub">Operations waiting to reach the server</div></div>
+    <div class="modal-body">
+      <div id="pendingList" style="max-height:50vh;overflow:auto;font-size:13px;"></div>
+      <div style="font-size:12px;color:var(--txt3);margin-top:10px;">These run automatically when the connection is back. You can retry now, or clear if stuck.</div>
+    </div>
+    <div class="modal-footer" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-cancel" onclick="closeModal('pendingModal')">Close</button>
+      <button class="btn-ok" onclick="retryPendingNow()">↻ Retry Now / Thu lai</button>
+      <button class="btn-ok" style="background:var(--red);" onclick="clearStuckPending()">🗑 Clear Stuck / Xoa</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══ WORKER ══ -->
@@ -1078,6 +1094,54 @@ async function processPendingOps(){
 window.addEventListener('online', ()=>{ processPendingOps().then(()=>loadAll()); });
 // And on a slower cadence regardless
 setInterval(()=>{ if(navigator.onLine) processPendingOps(); }, 15000);
+
+// ── PENDING SYNC MODAL ──────────────────────────────────────────────────────
+function describeOp(op){
+  const p=op.params||{};
+  const fn=op.fnName||'?';
+  if(fn==='rpc_done_station')return 'DONE — '+(p.p_sent_qty!=null?p.p_sent_qty+' pcs':'');
+  if(fn==='rpc_take_station')return 'TAKE → '+(p.p_team||'?')+' ('+(p.p_qty!=null?p.p_qty+' pcs':'')+')';
+  if(fn==='rpc_start_station')return 'START — '+(p.p_grp||'');
+  return fn;
+}
+function openPendingModal(){
+  renderPendingList();
+  document.getElementById('pendingModal').classList.add('open');
+}
+function renderPendingList(){
+  const ops=loadPendingOps();
+  const box=document.getElementById('pendingList');
+  if(!ops.length){
+    box.innerHTML='<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px;color:#1b5e20;">✅ Nothing pending. All synced.</div>';
+    return;
+  }
+  box.innerHTML=ops.map((o,i)=>{
+    const age=Math.round((Date.now()-(o.createdAt||Date.now()))/1000);
+    const ageStr=age<60?age+'s':Math.round(age/60)+'m';
+    const stuck=(o.attempts||0)>=3;
+    return `<div style="border:1px solid ${stuck?'var(--amber)':'var(--bdr2)'};border-radius:var(--r-md);padding:10px 12px;margin-bottom:8px;background:${stuck?'#FFF3E0':'var(--bg1)'};">
+      <div style="font-weight:600;color:var(--txt1);">${i+1}. ${describeOp(o)}</div>
+      <div style="font-size:11px;color:var(--txt3);margin-top:3px;">waiting ${ageStr} · ${o.attempts||0} attempt(s)${stuck?' · ⚠️ may be stuck':''}</div>
+    </div>`;
+  }).join('');
+}
+async function retryPendingNow(){
+  if(!navigator.onLine){showToast('Still offline / Khong co mang','red');return;}
+  showToast('Retrying pending operations...');
+  await processPendingOps();
+  await loadAll();
+  renderPendingList();
+  const left=loadPendingOps().length;
+  showToast(left?(left+' still pending'):'✅ All synced','green');
+}
+function clearStuckPending(){
+  const ops=loadPendingOps();
+  if(!ops.length){showToast('Nothing to clear');return;}
+  if(!confirm('Clear '+ops.length+' pending operation(s)?\nWARNING: These changes will NOT reach the server.\n\nXoa '+ops.length+' thao tac? Se KHONG luu len server.'))return;
+  savePendingOps([]);
+  renderPendingList();
+  showToast('Cleared '+ops.length+' stuck op(s)','green');
+}
 // ═══════════════════════════════════════════════════════════════════════════
 function updateClock(){
   const d=new Date();
@@ -1286,18 +1350,10 @@ async function autoMergePartialPrep(){
           is_partial:lineQty>0?(moveQty<lineQty):false,
           note:note
         }).eq('id',cutRow.id);
-        // Part Pull surplus waits for Cutting; exact match → just collapse it
-        if(ppExtra>0){
-          await sb.from('stations').update({
-            state:'waiting',
-            received_qty:ppExtra,
-            remaining_qty:ppExtra,
-            is_partial:true,
-            note:'WAITING: holds '+ppExtra+' pcs until Cutting finishes'
-          }).eq('id',ppRow.id);
-        }else{
-          await sb.from('stations').update({state:'taken'}).eq('id',ppRow.id);
-        }
+        // Part Pull finished its work — it must leave the Part Pull worker's
+        // screen regardless of surplus. The "5 pcs waiting for Cutting" info
+        // lives on the Cutting queue note, NOT on the Part Pull worker.
+        await sb.from('stations').update({state:'taken'}).eq('id',ppRow.id);
         // Any extra Cutting queue rows beyond the first → collapse (dup safety)
         for(const extra of cutQueue.slice(1)){
           await sb.from('stations').update({state:'taken'}).eq('id',extra.id);
@@ -1796,7 +1852,7 @@ async function executeDone_impl(sid,sentQty,remaining,markComplete,j,availableQt
 const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing'];
 
 // Returns reason a team cannot take this queue item, or null if allowed.
-function teamBlockReason(line,team,qty){
+function teamBlockReason(line,team,qty,isPartialMerged){
   if(!line)return null;
   // CRITICAL: If Testing/Packing is done OR line is fully complete, NO production team can take it.
   const PRODUCTION_TEAMS=['Cutting','Part Pull','C1','C2','C3','C4'];
@@ -1806,10 +1862,10 @@ function teamBlockReason(line,team,qty){
   }
   // CRITICAL: Cutting + Part Pull run in parallel. A C-team (C1-C4) can only
   // take the item once BOTH Cutting AND Part Pull have FINISHED.
-  // "Still working" = active / paused / waiting. A 'queue' or 'done' state
-  // means that half is FINISHED (queue = finished & handed to next stage).
+  // EXCEPTION: a partial-merge queue row is the system-released movable amount
+  // — it stays takeable even while Cutting still has remaining pieces.
   const C_TEAMS=['C1','C2','C3','C4'];
-  if(C_TEAMS.includes(team)){
+  if(C_TEAMS.includes(team)&&!isPartialMerged){
     const WORKING=['active','paused','waiting'];
     const cutStations=line.stations.filter(s=>s.grp==='Cutting');
     const ppStations=line.stations.filter(s=>s.grp==='Part Pull');
@@ -1817,11 +1873,8 @@ function teamBlockReason(line,team,qty){
     const ppExists=ppStations.length>0;
     const cutWorking=cutStations.some(s=>WORKING.includes(s.state));
     const ppWorking=ppStations.some(s=>WORKING.includes(s.state));
-    // If Cutting exists and is still actively being worked → not ready.
     if(cutExists&&cutWorking)return 'Cutting still in progress — wait until both Cutting + Part Pull finish';
-    // If Part Pull exists and is still actively being worked → not ready.
     if(ppExists&&ppWorking)return 'Part Pull still in progress — wait until both Cutting + Part Pull finish';
-    // If NEITHER Cutting nor Part Pull exists at all, item was never prepped.
     if(!cutExists&&!ppExists){
       return 'item not prepared yet (no Cutting / Part Pull)';
     }
@@ -1852,10 +1905,11 @@ function openTakeModal(qid){
   document.getElementById('takeCtx').textContent=qi.so+' / '+qi.item+' · '+qi.qty+' pcs from '+shortGrp(qi.fromGroup);
   const line=lines.find(l=>l.id===qi.lineId);
   const grid=document.getElementById('takeTeamGrid');
+  const isPM=(qi.note&&qi.note.indexOf('PARTIAL:')===0);
   // Build a tappable button per team. Blocked teams = greyed, not clickable.
   // No long reason text on the button itself (kept clean per request).
   grid.innerHTML=ALL_TEAMS.map(t=>{
-    const blocked=teamBlockReason(line,t,qi.qty);
+    const blocked=teamBlockReason(line,t,qi.qty,isPM);
     const label=shortGrp(t);
     if(blocked){
       return `<button class="team-btn blocked" disabled title="${blocked}">${label}</button>`;
@@ -1887,7 +1941,8 @@ async function confirmTake_impl(team){
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
   // Safety net in case UI was bypassed
   const line=lines.find(l=>l.id===qi.lineId);
-  const reason=teamBlockReason(line,team,qi.qty);
+  const isPM=(qi.note&&qi.note.indexOf('PARTIAL:')===0);
+  const reason=teamBlockReason(line,team,qi.qty,isPM);
   if(reason){
     showWarn('red','Cannot send to this team / Khong the gui',
       'This team already has this item',
@@ -2179,12 +2234,16 @@ function renderQueue(){
     // active/paused/waiting. 'queue' or 'done' = that half FINISHED.
     let prematureReason=null;
     if(line){
+      // A partial-merge queue row (note starts with "PARTIAL:") is ALREADY the
+      // movable, ready quantity that the system released. It must stay TAKEable
+      // even though Cutting still has remaining pieces in progress.
+      const isPartialMerged=(qi.note&&qi.note.indexOf('PARTIAL:')===0);
       const WORKING=['active','paused','waiting'];
       const cutWorking=line.stations.some(s=>s.grp==='Cutting'&&s.id!==qi.id&&WORKING.includes(s.state));
       const ppWorking=line.stations.some(s=>s.grp==='Part Pull'&&s.id!==qi.id&&WORKING.includes(s.state));
       // Only enforce when the item is leaving Cutting/Part Pull toward C-teams.
       const fromPrep=(qi.fromGroup==='Cutting'||qi.fromGroup==='Part Pull');
-      if(fromPrep){
+      if(fromPrep&&!isPartialMerged){
         if(cutWorking)prematureReason='Cutting still in progress — wait';
         else if(ppWorking)prematureReason='Part Pull still in progress — wait';
       }
