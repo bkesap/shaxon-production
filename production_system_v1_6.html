@@ -1531,6 +1531,48 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
       showToast(shortGrp(j.group)+' → Queue: '+sentQty+' pcs');
     }
     await loadAll();
+
+    // ── MERGE: Cutting + Part Pull are parallel. They must NOT create two
+    // separate queue items. When the SECOND of the pair finishes, its fresh
+    // queue row is redundant — the first one already represents the work.
+    // Collapse the redundant queue row so the C-team sees ONE item only.
+    if(!markComplete&&(j.group==='Cutting'||j.group==='Part Pull')){
+      try{
+        const line=lines.find(l=>l.id===j.lineId);
+        if(line){
+          const partner=j.group==='Cutting'?'Part Pull':'Cutting';
+          // "Finished" = not actively being worked. Cutting/PP that pushed to
+          // queue have state 'queue' (or 'done'/'taken'), NOT necessarily 'done'.
+          // Still working = active/paused/waiting.
+          const WORKING=['active','paused','waiting'];
+          const partnerStations=line.stations.filter(s=>s.grp===partner);
+          const partnerExists=partnerStations.length>0;
+          const partnerStillWorking=partnerStations.some(s=>WORKING.includes(s.state));
+          const partnerFinished=partnerExists&&!partnerStillWorking;
+          if(partnerFinished){
+            // Both halves finished. Keep the CUTTING queue row, collapse Part Pull's.
+            const queueRows=line.stations
+              .filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.state==='queue');
+            if(queueRows.length>1){
+              const cuttingQ=queueRows.find(s=>s.grp==='Cutting');
+              let keepId;
+              if(cuttingQ){
+                keepId=cuttingQ.id;
+              } else {
+                keepId=queueRows.slice().sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0))[0].id;
+              }
+              for(const qr of queueRows){
+                if(qr.id!==keepId){
+                  await sb.from('stations').update({state:'taken'}).eq('id',qr.id);
+                }
+              }
+              await loadAll();
+              showToast('✓ Cutting + Part Pull merged — one item ready for next team','green');
+            }
+          }
+        }
+      }catch(e){console.warn('Queue merge skipped (non-critical):',e);}
+    }
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Error — will retry when back online / Loi','red');
