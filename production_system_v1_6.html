@@ -1041,6 +1041,14 @@ async function loadAll(){
     const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
+    // State-based auto-heal: collapse duplicate Cutting/Part Pull queue rows.
+    // Runs every load so it fixes BOTH old garbage and new data. Returns true
+    // if it changed anything (then we reload once to get fresh state).
+    const healed=await autoMergeQueuePairs();
+    if(healed){
+      const {data:sd2}=await sb.from('stations').select('*').order('started_at');
+      if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
+    }
     rebuildJobs();rebuildDone();rebuildQueue();
     setSyncDot('ok');
     renderWorker();renderQueue();
@@ -1050,6 +1058,44 @@ async function loadAll(){
     console.error(err);setSyncDot('error');
     showToast('Connection error / Loi ket noi','red');
   }
+}
+
+// Collapse redundant Cutting/Part Pull queue rows. Cutting + Part Pull run in
+// parallel; when BOTH are finished there must be exactly ONE queue item for the
+// next team. Keeps the Cutting queue row, marks the Part Pull one 'taken'.
+// State-based (not event-based) so it self-heals old + new data on every load.
+let _autoMergeBusy=false;
+async function autoMergeQueuePairs(){
+  if(_autoMergeBusy)return false;
+  _autoMergeBusy=true;
+  let changed=false;
+  try{
+    const WORKING=['active','paused','waiting'];
+    for(const line of lines){
+      if(line.fully_done)continue;
+      const sts=line.stations||[];
+      const cutQueue=sts.filter(s=>s.grp==='Cutting'&&s.state==='queue');
+      const ppQueue=sts.filter(s=>s.grp==='Part Pull'&&s.state==='queue');
+      // Need at least one Cutting queue AND one Part Pull queue to have a dup pair
+      if(!cutQueue.length||!ppQueue.length)continue;
+      // Both halves must be finished (none of them still actively working)
+      const cutWorking=sts.some(s=>s.grp==='Cutting'&&WORKING.includes(s.state));
+      const ppWorking=sts.some(s=>s.grp==='Part Pull'&&WORKING.includes(s.state));
+      if(cutWorking||ppWorking)continue;
+      // Keep the FIRST Cutting queue row; collapse every other Cutting/PartPull queue row.
+      const keepId=cutQueue[0].id;
+      const collapse=[...cutQueue.slice(1),...ppQueue].filter(s=>s.id!==keepId);
+      for(const st of collapse){
+        try{
+          await sb.from('stations').update({state:'taken'}).eq('id',st.id);
+          changed=true;
+        }catch(e){console.warn('auto-merge collapse failed:',e);}
+      }
+    }
+  }finally{
+    _autoMergeBusy=false;
+  }
+  return changed;
 }
 
 function rebuildJobs(){
@@ -1531,48 +1577,6 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
       showToast(shortGrp(j.group)+' → Queue: '+sentQty+' pcs');
     }
     await loadAll();
-
-    // ── MERGE: Cutting + Part Pull are parallel. They must NOT create two
-    // separate queue items. When the SECOND of the pair finishes, its fresh
-    // queue row is redundant — the first one already represents the work.
-    // Collapse the redundant queue row so the C-team sees ONE item only.
-    if(!markComplete&&(j.group==='Cutting'||j.group==='Part Pull')){
-      try{
-        const line=lines.find(l=>l.id===j.lineId);
-        if(line){
-          const partner=j.group==='Cutting'?'Part Pull':'Cutting';
-          // "Finished" = not actively being worked. Cutting/PP that pushed to
-          // queue have state 'queue' (or 'done'/'taken'), NOT necessarily 'done'.
-          // Still working = active/paused/waiting.
-          const WORKING=['active','paused','waiting'];
-          const partnerStations=line.stations.filter(s=>s.grp===partner);
-          const partnerExists=partnerStations.length>0;
-          const partnerStillWorking=partnerStations.some(s=>WORKING.includes(s.state));
-          const partnerFinished=partnerExists&&!partnerStillWorking;
-          if(partnerFinished){
-            // Both halves finished. Keep the CUTTING queue row, collapse Part Pull's.
-            const queueRows=line.stations
-              .filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.state==='queue');
-            if(queueRows.length>1){
-              const cuttingQ=queueRows.find(s=>s.grp==='Cutting');
-              let keepId;
-              if(cuttingQ){
-                keepId=cuttingQ.id;
-              } else {
-                keepId=queueRows.slice().sort((a,b)=>new Date(a.started_at||0)-new Date(b.started_at||0))[0].id;
-              }
-              for(const qr of queueRows){
-                if(qr.id!==keepId){
-                  await sb.from('stations').update({state:'taken'}).eq('id',qr.id);
-                }
-              }
-              await loadAll();
-              showToast('✓ Cutting + Part Pull merged — one item ready for next team','green');
-            }
-          }
-        }
-      }catch(e){console.warn('Queue merge skipped (non-critical):',e);}
-    }
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Error — will retry when back online / Loi','red');
