@@ -1552,13 +1552,13 @@ function teamBlockReason(line,team,qty){
   if((line.fully_done||tpDone)&&PRODUCTION_TEAMS.includes(team)){
     return 'order already completed (Test/Pack done)';
   }
-  // Also block Test/Pack itself from being taken twice if already done with same qty
   // Active/paused/waiting at this team — cannot send again
   const aj=line.stations.find(s=>s.grp===team&&(s.state==='active'||s.state==='paused'||s.state==='waiting'));
   if(aj)return 'already '+aj.state;
-  // Done at this team with the SAME qty — duplicate (different qty = back-order, allowed)
-  const ds=line.stations.find(s=>s.grp===team&&s.state==='done'&&(s.sent_qty||0)===qty);
-  if(ds)return 'done '+qty+' pcs at '+(ds.done_at||'?');
+  // Rule: if this team already DONE the same qty for this SO+item → block (duplicate).
+  // Different qty is allowed (legit back-order for the remaining pieces).
+  const doneSame=line.stations.find(s=>s.grp===team&&s.state==='done'&&(s.sent_qty||0)===qty);
+  if(doneSame)return 'already done '+qty+' pcs at '+(doneSame.done_at||'?')+' (same qty — not a back-order)';
   return null;
 }
 
@@ -3222,18 +3222,24 @@ function detectZombies(){
       }
     });
 
-    // Type B: Same team duplicate (done + alive again)
+    // Type B: Same team finished a qty, but the SAME qty is alive/queued again.
+    // Rule (user): same SO+item+qty done → cannot be taken again (duplicate).
+    //              different qty → allowed (legit back-order for remaining pcs).
     const allTeams=['Cutting','Part Pull','C1','C2','C3','C4',FINAL_TEAM];
     for(const team of allTeams){
       const teamSt=sts.filter(s=>s.grp===team);
-      const hasDone=teamSt.some(s=>s.state==='done');
-      if(hasDone){
-        teamSt.filter(s=>ALIVE.includes(s.state)).forEach(s=>{
+      const doneQtys=teamSt.filter(s=>s.state==='done').map(s=>s.sent_qty||0);
+      if(!doneQtys.length)continue;
+      // Any alive/queue station whose qty matches an already-done qty = duplicate
+      teamSt.filter(s=>['active','paused','waiting','queue'].includes(s.state)).forEach(s=>{
+        const q=s.sent_qty||0;
+        if(doneQtys.includes(q)){
           if(!zombies.some(z=>z.stationId===s.id)){
-            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:team+' already finished this item once'});
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' already done '+q+' pcs — same qty cannot repeat (not back-order)'});
           }
-        });
-      }
+        }
+        // different qty → leave alone (legitimate back-order for remaining pieces)
+      });
     }
 
     // Type B2: Same team has duplicate alive/queue stations from double-submit
