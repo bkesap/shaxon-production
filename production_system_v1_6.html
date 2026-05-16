@@ -377,6 +377,13 @@ body{font-family:var(--font);background:var(--bg2);}
 .note-ta:focus{border-color:var(--blue-m);}
 .team-sel{width:100%;padding:11px 12px;font-size:16px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;-webkit-appearance:none;appearance:none;font-family:var(--font);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239099AA' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;}
 .team-sel:focus{border-color:var(--blue-m);}
+.team-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.team-btn{padding:16px 12px;font-size:17px;font-weight:600;border:2px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);cursor:pointer;font-family:var(--font);text-align:center;transition:all .12s;-webkit-tap-highlight-color:transparent;}
+.team-btn:active{transform:scale(.96);}
+.team-btn:hover{border-color:var(--blue-m);background:var(--blue-lt);}
+.team-btn.blocked{background:var(--bg2);color:var(--txt3);border-color:var(--bdr3);border-style:dashed;cursor:not-allowed;opacity:.55;}
+.team-btn.blocked:hover{border-color:var(--bdr3);background:var(--bg2);}
+.team-btn.full{grid-column:1 / -1;}
 .modal-footer{padding:11px 17px;border-top:1px solid var(--bdr3);display:flex;justify-content:flex-end;gap:8px;}
 .btn-cancel{padding:8px 16px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);font-size:14px;font-weight:500;cursor:pointer;}
 .btn-ok{padding:8px 22px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;}
@@ -734,18 +741,11 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="modal-box">
     <div class="modal-hdr blue"><div class="modal-title">Which team is taking this? / Nhom nao nhan?</div><div class="modal-sub" id="takeCtx"></div></div>
     <div class="modal-body">
-      <select class="team-sel" id="takeTeamSel">
-        <option value="">-- Select your team --</option>
-        <option>Cutting</option>
-        <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
-        <option>Part Pull</option>
-        <option>Testing / Packing</option>
-      </select>
-      <div style="font-size:12px;color:var(--txt3);">This will move the job to your active list / Se chuyen viec vao danh sach cua ban</div>
+      <div class="team-grid" id="takeTeamGrid"></div>
+      <div style="font-size:12px;color:var(--txt3);margin-top:4px;">Tap your team / Cham vao nhom cua ban</div>
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('takeModal')">Cancel</button>
-      <button class="btn-ok" onclick="confirmTake()">Take Job / Nhan viec</button>
     </div>
   </div>
 </div>
@@ -866,6 +866,73 @@ let currentTeam='';
 let noteTargetId=null,doneTargetId=null,takeTargetId=null;
 let confirmPending=null,testCompletePending=null;
 let adminDelTarget=null;
+
+// ── CENTRAL ACTION GUARD ────────────────────────────────────────────────────
+// One lock for ALL critical actions (START / DONE / TAKE / PAUSE / RESUME /
+// bulk). While any of them runs, a second tap is fully ignored and the
+// triggering button is visually disabled. A safety timeout releases the lock
+// if the network hangs, so the UI never stays frozen.
+let _actionBusy=false;
+let _actionTimer=null;
+
+function lockActions(srcEl){
+  _actionBusy=true;
+  // Disable + grey the button that was pressed (visual feedback for workers)
+  if(srcEl&&srcEl.tagName){
+    srcEl.dataset._wasDisabled=srcEl.disabled?'1':'0';
+    srcEl.disabled=true;
+    srcEl.style.opacity='0.5';
+    srcEl.style.cursor='not-allowed';
+    srcEl._guardEl=true;
+  }
+  // Safety net: never stay locked more than 12s (slow network protection)
+  if(_actionTimer)clearTimeout(_actionTimer);
+  _actionTimer=setTimeout(()=>{ _actionBusy=false; unlockAllButtons(); },12000);
+}
+
+function unlockAllButtons(){
+  document.querySelectorAll('[data-_wasDisabled]').forEach(el=>{
+    if(el.dataset._wasDisabled!=='1')el.disabled=false;
+    el.style.opacity='';
+    el.style.cursor='';
+    delete el.dataset._wasDisabled;
+    delete el._guardEl;
+  });
+}
+
+function releaseActions(){
+  _actionBusy=false;
+  if(_actionTimer){clearTimeout(_actionTimer);_actionTimer=null;}
+  unlockAllButtons();
+}
+
+// Wrap any critical async action. Returns a function that:
+//  - ignores the call if another action is in flight
+//  - locks + disables the source button
+//  - always releases (even on error) in finally
+function guardedAction(fn){
+  return async function(...args){
+    if(_actionBusy){
+      console.warn('Action ignored — another action in progress');
+      return;
+    }
+    // event.currentTarget is the button when called from onclick
+    let srcEl=null;
+    try{
+      if(window.event&&window.event.currentTarget)srcEl=window.event.currentTarget;
+      else if(window.event&&window.event.target)srcEl=window.event.target;
+    }catch(e){}
+    lockActions(srcEl);
+    try{
+      return await fn.apply(this,args);
+    }catch(err){
+      console.error('Guarded action error:',err);
+      throw err;
+    }finally{
+      releaseActions();
+    }
+  };
+}
 let soHideT=null,itemHideT=null;
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1259,7 +1326,7 @@ function onItemInput(){document.getElementById('inputItem').value=document.getEl
 function schedHideItem(){itemHideT=setTimeout(()=>{document.getElementById('itemSug').style.display='none';document.getElementById('inputItem').classList.remove('has-sug');},200);}
 
 // ── START ─────────────────────────────────────────────────────────────────────
-function handleStart(){
+function handleStart_impl(){
   const team=document.getElementById('inputTeam').value.trim();
   const so=document.getElementById('inputSO').value.trim().toUpperCase();
   const item=document.getElementById('inputItem').value.trim().toUpperCase();
@@ -1340,7 +1407,7 @@ function handleStart(){
 
 let partPullPending=null;
 
-async function confirmStart(){
+async function confirmStart_impl(){
   closeModal('confirmModal');
   const {team,so,item,qty,existingLine}=confirmPending;
   confirmPending=null;
@@ -1426,14 +1493,14 @@ async function confirmPartPull(yes){
 }
 
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
-async function pauseJob(sid){
+async function pauseJob_impl(sid){
   const j=jobs.find(x=>x.stationId===sid);if(!j)return;
   const add=Date.now()-j.startedAt;
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',sid);await loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
 }
-async function resumeJob(sid){
+async function resumeJob_impl(sid){
   // Guard: do not resume a station that was already done
   const j=jobs.find(x=>x.stationId===sid);
   if(j&&j.state==='done'){
@@ -1467,7 +1534,7 @@ function openDoneModal(sid){
   setTimeout(()=>{document.getElementById('doneQtyInput').focus();document.getElementById('doneQtyInput').select();},150);
 }
 
-async function confirmDone(){
+async function confirmDone_impl(){
   const sentQty=parseInt(document.getElementById('doneQtyInput').value)||0;
   const j=jobs.find(x=>x.stationId===doneTargetId);if(!j)return;
   const isFinal=j.group===FINAL;
@@ -1514,21 +1581,14 @@ async function confirmDone(){
   doneTargetId=null;
 }
 
-async function confirmTestComplete(){
+async function confirmTestComplete_impl(){
   closeModal('testCompleteModal');
   const {sid,sentQty,j,availableQty}=testCompletePending;
   testCompletePending=null;
   await executeDone(sid,sentQty,0,true,j,availableQty||sentQty);
 }
 
-let _executeDoneLock=false;
-async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
-  // Double-submit guard — block rapid double taps / re-entry while RPC in flight
-  if(_executeDoneLock){
-    console.warn('executeDone blocked — already in progress');
-    return;
-  }
-  _executeDoneLock=true;
+async function executeDone_impl(sid,sentQty,remaining,markComplete,j,availableQty){
   const add=j.state==='active'?Date.now()-j.startedAt:0;
   const total=j.elapsed+add;
   setSyncDot('syncing');
@@ -1580,8 +1640,6 @@ async function executeDone(sid,sentQty,remaining,markComplete,j,availableQty){
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Error — will retry when back online / Loi','red');
-  }finally{
-    _executeDoneLock=false;
   }
 }
 
@@ -1597,23 +1655,26 @@ function teamBlockReason(line,team,qty){
   if((line.fully_done||tpDone)&&PRODUCTION_TEAMS.includes(team)){
     return 'order already completed (Test/Pack done)';
   }
-  // CRITICAL: Cutting + Part Pull run in parallel. A C-team (C1-C4) can only take
-  // the item once BOTH Cutting AND Part Pull are fully done. If either is still
-  // alive (active/paused/waiting/queue), the item is NOT ready downstream.
+  // CRITICAL: Cutting + Part Pull run in parallel. A C-team (C1-C4) can only
+  // take the item once BOTH Cutting AND Part Pull have FINISHED.
+  // "Still working" = active / paused / waiting. A 'queue' or 'done' state
+  // means that half is FINISHED (queue = finished & handed to next stage).
   const C_TEAMS=['C1','C2','C3','C4'];
   if(C_TEAMS.includes(team)){
-    const ALIVEqp=['active','paused','waiting','queue'];
-    const cutAlive=line.stations.find(s=>s.grp==='Cutting'&&ALIVEqp.includes(s.state));
-    const ppAlive=line.stations.find(s=>s.grp==='Part Pull'&&ALIVEqp.includes(s.state));
-    const cutDone=line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-    const ppDone=line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-    // Cutting must be finished (done or taken-after-done). If Cutting alive → not ready.
-    if(cutAlive)return 'Cutting not finished yet ('+cutAlive.state+') — wait until Cutting + Part Pull both done';
-    // Part Pull must be finished too.
-    if(ppAlive)return 'Part Pull not finished yet ('+ppAlive.state+') — wait until Cutting + Part Pull both done';
-    // Safety: if neither Cutting done nor Part Pull done exists at all, item isn't prepped.
-    if(!cutDone&&!ppDone){
-      return 'item not prepared yet (no Cutting/Part Pull done)';
+    const WORKING=['active','paused','waiting'];
+    const cutStations=line.stations.filter(s=>s.grp==='Cutting');
+    const ppStations=line.stations.filter(s=>s.grp==='Part Pull');
+    const cutExists=cutStations.length>0;
+    const ppExists=ppStations.length>0;
+    const cutWorking=cutStations.some(s=>WORKING.includes(s.state));
+    const ppWorking=ppStations.some(s=>WORKING.includes(s.state));
+    // If Cutting exists and is still actively being worked → not ready.
+    if(cutExists&&cutWorking)return 'Cutting still in progress — wait until both Cutting + Part Pull finish';
+    // If Part Pull exists and is still actively being worked → not ready.
+    if(ppExists&&ppWorking)return 'Part Pull still in progress — wait until both Cutting + Part Pull finish';
+    // If NEITHER Cutting nor Part Pull exists at all, item was never prepped.
+    if(!cutExists&&!ppExists){
+      return 'item not prepared yet (no Cutting / Part Pull)';
     }
   }
   // Active/paused/waiting at this team — cannot send again
@@ -1631,38 +1692,39 @@ function openTakeModal(qid){
   takeTargetId=qid;
   document.getElementById('takeCtx').textContent=qi.so+' / '+qi.item+' · '+qi.qty+' pcs from '+shortGrp(qi.fromGroup);
   const line=lines.find(l=>l.id===qi.lineId);
-  // Rebuild the team select with blocked teams marked
-  const sel=document.getElementById('takeTeamSel');
-  let opts='<option value="">-- Select your team --</option>';
-  ALL_TEAMS.forEach(t=>{
-    const reason=teamBlockReason(line,t,qi.qty);
-    if(reason){
-      opts+=`<option value="" disabled style="color:#aaa;">${t} — ✗ ${reason}</option>`;
-    } else {
-      opts+=`<option value="${t}">${t}</option>`;
+  const grid=document.getElementById('takeTeamGrid');
+  // Build a tappable button per team. Blocked teams = greyed, not clickable.
+  // No long reason text on the button itself (kept clean per request).
+  grid.innerHTML=ALL_TEAMS.map(t=>{
+    const blocked=teamBlockReason(line,t,qi.qty);
+    const label=shortGrp(t);
+    if(blocked){
+      return `<button class="team-btn blocked" disabled title="${blocked}">${label}</button>`;
     }
-  });
-  sel.innerHTML=opts;
-  sel.value='';
+    return `<button class="team-btn" onclick="pickTakeTeam('${t.replace(/'/g,"\\'")}')">${label}</button>`;
+  }).join('');
   document.getElementById('takeModal').classList.add('open');
 }
-async function confirmTake(){
-  const team=document.getElementById('takeTeamSel').value;
+
+// Called when a team button is tapped — runs the guarded take directly.
+function pickTakeTeam(team){
+  confirmTake(team);
+}
+
+async function confirmTake_impl(team){
   if(!team){showToast('Select your team / Chon nhom');return;}
   const qi=queueItems.find(x=>x.id===takeTargetId);if(!qi)return;
-
-  // v1.7 — Safety net in case dropdown was bypassed somehow
+  // Safety net in case UI was bypassed
   const line=lines.find(l=>l.id===qi.lineId);
   const reason=teamBlockReason(line,team,qi.qty);
   if(reason){
     showWarn('red','Cannot send to this team / Khong the gui',
-      'Same SO+item+qty already at this team',
-      `<strong>${team}</strong> already has this item: <strong>${reason}</strong>.<br>Pick a different team. Back-order with different qty is allowed.`,
-      `<strong>${team}</strong> da co san pham nay. Chon nhom khac.`,
+      'This team already has this item',
+      `<strong>${shortGrp(team)}</strong> cannot take this: <strong>${reason}</strong>.`,
+      `<strong>${shortGrp(team)}</strong> da co san pham nay. Chon nhom khac.`,
       `<div class="modal-detail-row">Reason: <strong>${reason}</strong></div>`);
     return;
   }
-
   closeModal('takeModal');
   setSyncDot('syncing');
   try{
@@ -1933,22 +1995,19 @@ function renderQueue(){
   body.innerHTML=filtered.map(qi=>{
     const isPartial=qi.qty<qi.totalQty;
     const line=lines.find(l=>l.id===qi.lineId);
-    // Premature check: if this queue item is meant to go to a C-team next,
-    // both Cutting AND Part Pull must be done. If not, block TAKE here too.
+    // Premature check: a queue item leaving the Cutting/Part Pull stage can
+    // only be taken once BOTH halves have finished. "Still working" =
+    // active/paused/waiting. 'queue' or 'done' = that half FINISHED.
     let prematureReason=null;
     if(line){
-      const ALIVEqp=['active','paused','waiting','queue'];
-      const cutAlive=line.stations.find(s=>s.grp==='Cutting'&&s.id!==qi.id&&ALIVEqp.includes(s.state));
-      const ppAlive=line.stations.find(s=>s.grp==='Part Pull'&&s.id!==qi.id&&ALIVEqp.includes(s.state));
-      const cutDone=line.stations.some(s=>s.grp==='Cutting'&&s.state==='done');
-      const ppDone=line.stations.some(s=>s.grp==='Part Pull'&&s.state==='done');
-      // Only enforce when the item is leaving Cutting/Part Pull stage toward C-teams.
-      // If it comes from a C-team or Test/Pack, this gate does not apply.
+      const WORKING=['active','paused','waiting'];
+      const cutWorking=line.stations.some(s=>s.grp==='Cutting'&&s.id!==qi.id&&WORKING.includes(s.state));
+      const ppWorking=line.stations.some(s=>s.grp==='Part Pull'&&s.id!==qi.id&&WORKING.includes(s.state));
+      // Only enforce when the item is leaving Cutting/Part Pull toward C-teams.
       const fromPrep=(qi.fromGroup==='Cutting'||qi.fromGroup==='Part Pull');
       if(fromPrep){
-        if(cutAlive)prematureReason='Cutting still '+cutAlive.state+' — not ready for next team';
-        else if(ppAlive)prematureReason='Part Pull still '+ppAlive.state+' — not ready for next team';
-        else if(!cutDone&&!ppDone)prematureReason='Cutting & Part Pull not done yet';
+        if(cutWorking)prematureReason='Cutting still in progress — wait';
+        else if(ppWorking)prematureReason='Part Pull still in progress — wait';
       }
     }
     const takeBtn=prematureReason
@@ -4172,7 +4231,7 @@ function hideBulkSug(id){
   if(inp)inp.classList.remove('has-sug');
 }
 
-async function handleBulkStart(){
+async function handleBulkStart_impl(){
   const team=document.getElementById('inputTeam').value;
   if(!team||team==='__ALL__'){showToast('Select a team first');return;}
   const so=bulkSOValue;
@@ -4601,6 +4660,22 @@ function setupChatRealtime(){
     })
     .subscribe();
 }
+
+// ── GUARDED PUBLIC WRAPPERS ─────────────────────────────────────────────────
+// These names are what the HTML onclick handlers call. Each ignores rapid
+// double-taps and disables its button while running (central guard).
+// NOTE: executeDone is NOT guarded directly — it's always called from inside
+// confirmDone / confirmTestComplete (which ARE guarded). Guarding both would
+// cause a nested-lock deadlock that blocks DONE entirely.
+const handleStart      = guardedAction(handleStart_impl);
+const confirmStart     = guardedAction(confirmStart_impl);
+const pauseJob         = guardedAction(pauseJob_impl);
+const resumeJob        = guardedAction(resumeJob_impl);
+const confirmTake      = guardedAction(confirmTake_impl);
+const handleBulkStart  = guardedAction(handleBulkStart_impl);
+const executeDone      = executeDone_impl;
+const confirmDone      = guardedAction(confirmDone_impl);
+const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init(){
