@@ -3136,35 +3136,52 @@ function detectZombies(){
       });
     }
 
-    // Type D: Cutting/Part Pull started AFTER a C-team or Test/Pack started (wrong order)
-    const downstreamStarts=sts
-      .filter(s=>(C_TEAMS.includes(s.grp)||s.grp===FINAL_TEAM)&&s.started_at)
-      .map(s=>new Date(s.started_at).getTime())
-      .filter(t=>!isNaN(t));
-    if(downstreamStarts.length){
-      const earliest=Math.min(...downstreamStarts);
-      sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.started_at).forEach(s=>{
-        const ts=new Date(s.started_at).getTime();
-        if(!isNaN(ts)&&ts>earliest){
-          if(s.state==='taken')return;
-          if(zombies.some(z=>z.stationId===s.id))return;
-          zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:s.grp+' started AFTER C-team/Test (wrong order)'});
-        }
-      });
+    // Type D (NEW): Cutting exists but Part Pull was never created.
+    // Rule: every item released from Cutting MUST have an auto Part Pull.
+    // If Part Pull is completely missing, auto-Part-Pull failed (bug) — but the
+    // FIX is to create Part Pull, NOT to delete stations. So we report it
+    // separately with fixable:true (not cleaned by "Mark All as Taken").
+    const hasCutting=sts.some(s=>s.grp==='Cutting');
+    const hasPartPull=sts.some(s=>s.grp==='Part Pull');
+    if(hasCutting&&!hasPartPull&&!line.fully_done){
+      // Only report if the line is still active somewhere (not fully archived)
+      const anyAlive=sts.some(s=>['active','paused','waiting','queue'].includes(s.state));
+      if(anyAlive){
+        zombies.push({
+          stationId:null,lineId:line.id,so:line.so,item:line.item,qty:line.qty,
+          grp:'Part Pull',state:'MISSING',
+          reason:'Part Pull never opened (auto-Part-Pull failed)',
+          fixable:true
+        });
+      }
     }
   }
-  return zombies;
+  // FINAL SAFETY: never flag a station that is 'done' or 'taken' for deletion.
+  // Those are completed/archived work — deleting them = data loss.
+  // (MISSING entries have stationId:null and are kept — they are fix-only, not delete.)
+  const safe=zombies.filter(z=>{
+    if(z.stationId===null)return true; // MISSING-type, handled separately
+    const line=lines.find(l=>l.id===z.lineId);
+    const st=line&&line.stations.find(s=>s.id===z.stationId);
+    if(!st)return false;
+    return st.state!=='done'&&st.state!=='taken';
+  });
+  return safe;
 }
 
 function findZombies(){
   const result=document.getElementById('zombieResult');
-  const zombies=detectZombies();
-  if(!zombies.length){
+  const all=detectZombies();
+  if(!all.length){
     result.style.display='block';
     result.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No zombie stations found. System is clean.</div>`;
     return;
   }
-  const rows=zombies.map(z=>`<tr>
+  // Split: deletable (real station id) vs fixable (missing Part Pull → create, don't delete)
+  const deletable=all.filter(z=>z.stationId!==null);
+  const fixable=all.filter(z=>z.stationId===null&&z.fixable);
+
+  const delRows=deletable.map(z=>`<tr>
     <td style="font-weight:600;color:var(--blue);">${z.so}</td>
     <td class="item-num" title="${z.item}">${z.item}</td>
     <td>${z.qty}</td>
@@ -3172,27 +3189,59 @@ function findZombies(){
     <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${z.state==='paused'?'var(--amber-lt)':z.state==='active'?'var(--green-lt)':'#F3E5F5'};color:${z.state==='paused'?'var(--amber-dk)':z.state==='active'?'#1b5e20':'#6a1b9a'};">${z.state}</span></td>
     <td style="font-size:11px;color:var(--txt2);font-style:italic;">${z.reason}</td>
   </tr>`).join('');
+
+  const fixRows=fixable.map(z=>`<tr>
+    <td style="font-weight:600;color:var(--blue);">${z.so}</td>
+    <td class="item-num" title="${z.item}">${z.item}</td>
+    <td>${z.qty}</td>
+    <td style="font-size:11px;color:var(--txt2);font-style:italic;">${z.reason}</td>
+  </tr>`).join('');
+
   result.style.display='block';
-  result.innerHTML=`
+  let html='';
+  if(deletable.length){
+    html+=`
     <div style="background:#FFF3E0;border:1px solid var(--amber);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--amber-dk);">
-      🧟 <strong>${zombies.length} zombie station(s) found.</strong> Review the list below.
+      🧟 <strong>${deletable.length} duplicate/stuck station(s)</strong> — these are ALIVE stations in the wrong place. Safe to mark as taken (done/taken history is never touched).
     </div>
     <table class="admin-table" style="margin-bottom:12px;">
       <thead><tr><th style="width:100px;">SO</th><th>Item</th><th style="width:70px;">Qty</th><th style="width:80px;">Station</th><th style="width:80px;">State</th><th>Reason</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${delRows}</tbody>
     </table>
-    <button onclick="cleanZombies()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">✓ Mark All ${zombies.length} as Taken (Clean)</button>`;
-  window._zombiesPending=zombies.map(z=>z.stationId);
+    <button onclick="cleanZombies()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:18px;">✓ Mark All ${deletable.length} as Taken (Clean)</button>`;
+  }
+  if(fixable.length){
+    html+=`
+    <div style="background:#E3F2FD;border:1px solid var(--blue-m);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--blue-dk);">
+      🔧 <strong>${fixable.length} item(s) missing Part Pull</strong> — Cutting was released but auto-Part-Pull failed. The fix is to CREATE the missing Part Pull (not delete anything).
+    </div>
+    <table class="admin-table" style="margin-bottom:12px;">
+      <thead><tr><th style="width:100px;">SO</th><th>Item</th><th style="width:70px;">Qty</th><th>Issue</th></tr></thead>
+      <tbody>${fixRows}</tbody>
+    </table>
+    <button onclick="fixMissingPartPull()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🔧 Create ${fixable.length} Missing Part Pull(s)</button>`;
+  }
+  result.innerHTML=html;
+  window._zombiesPending=deletable.map(z=>z.stationId).filter(Boolean);
+  window._fixablePending=fixable;
 }
 
 async function cleanZombies(){
   const ids=window._zombiesPending||[];
   if(!ids.length){showToast('Nothing to clean','red');return;}
-  if(!confirm('Mark '+ids.length+' zombie station(s) as taken?\nThey will disappear from active jobs but history is kept.\n\nXoa '+ids.length+' tram zombie? Lich su giu lai.'))return;
+  if(!confirm('Mark '+ids.length+' alive station(s) as taken?\nDone/taken history is NEVER touched.\n\nXoa '+ids.length+' tram? Lich su giu lai.'))return;
   setSyncDot('syncing');
   try{
     let cleaned=0;
     for(const sid of ids){
+      if(!sid)continue;
+      // Extra guard: re-check this station is NOT done/taken before touching
+      const ln=lines.find(l=>l.stations.some(s=>s.id===sid));
+      const st=ln&&ln.stations.find(s=>s.id===sid);
+      if(st&&(st.state==='done'||st.state==='taken')){
+        console.warn('Skipped — station is',st.state,sid);
+        continue;
+      }
       const j=jobs.find(x=>x.stationId===sid);
       const update={state:'taken'};
       if(j&&j.state==='active'&&j.startedAt){
@@ -3203,13 +3252,45 @@ async function cleanZombies(){
     }
     await loadAll();
     document.getElementById('zombieResult').style.display='none';
-    showToast('✅ Cleaned '+cleaned+' zombie station(s) / Da don '+cleaned+' tram','green');
+    showToast('✅ Cleaned '+cleaned+' station(s) / Da don '+cleaned,'green');
     window._zombiesPending=null;
     renderAdmin();
   }catch(err){
     console.error('Zombie clean error:',err);
     setSyncDot('error');
-    showToast('Error cleaning zombies / Loi','red');
+    showToast('Error cleaning / Loi','red');
+  }
+}
+
+async function fixMissingPartPull(){
+  const items=window._fixablePending||[];
+  if(!items.length){showToast('Nothing to fix','red');return;}
+  if(!confirm('Create Part Pull for '+items.length+' item(s)?\nThis ADDS the missing Part Pull station (no deletion).\n\nTao Part Pull cho '+items.length+' san pham?'))return;
+  setSyncDot('syncing');
+  try{
+    let fixed=0;
+    for(const it of items){
+      const line=lines.find(l=>l.id===it.lineId);
+      if(!line)continue;
+      // Double-check Part Pull still missing
+      if(line.stations.some(s=>s.grp==='Part Pull'))continue;
+      const qtyNum=parseInt(line.qty)||0;
+      await sb.from('stations').insert({
+        line_id:line.id,grp:'Part Pull',state:'active',
+        started_at:new Date().toISOString(),elapsed_ms:0,
+        done_at:null,note:null,sent_qty:0,remaining_qty:qtyNum
+      });
+      fixed++;
+    }
+    await loadAll();
+    document.getElementById('zombieResult').style.display='none';
+    showToast('✅ Created '+fixed+' Part Pull station(s)','green');
+    window._fixablePending=null;
+    renderAdmin();
+  }catch(err){
+    console.error('Fix Part Pull error:',err);
+    setSyncDot('error');
+    showToast('Error creating Part Pull / Loi','red');
   }
 }
 
