@@ -1164,13 +1164,17 @@ function showPage(p,el){
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
-  // Always clear the worker job-search on any page change. A leftover filter
-  // (e.g. "TT10") silently hides jobs on the Worker page, so the worker sees
-  // an empty list / stale DONE buttons and the only fix was a full refresh.
-  const _jsp=document.getElementById('jobSearch');
-  if(_jsp&&_jsp.value){_jsp.value='';if(typeof renderWorker==='function')renderWorker();}
+  // Always clear EVERY search box on any page change. A leftover filter on
+  // any page (Worker "TT10", Queue "TT", etc.) silently hides rows so the
+  // worker sees an empty/stale list and the only fix was a full refresh.
+  // Clearing all of them on navigation guarantees a clean view every time.
+  ['jobSearch','queueSearch','dashSearch','schedSearch','adminSearch'].forEach(id=>{
+    const _b=document.getElementById(id);
+    if(_b&&_b.value)_b.value='';
+  });
   if(p==='dash')renderDash();
   if(p==='queue')renderQueue();
+  if(p==='worker'&&typeof renderWorker==='function')renderWorker();
   if(p==='admin')renderAdmin();
   if(p==='completed')renderDonePanel();
   if(p==='daily')renderDaily();
