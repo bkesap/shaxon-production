@@ -1164,6 +1164,11 @@ function showPage(p,el){
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
+  // Always clear the worker job-search on any page change. A leftover filter
+  // (e.g. "TT10") silently hides jobs on the Worker page, so the worker sees
+  // an empty list / stale DONE buttons and the only fix was a full refresh.
+  const _jsp=document.getElementById('jobSearch');
+  if(_jsp&&_jsp.value){_jsp.value='';if(typeof renderWorker==='function')renderWorker();}
   if(p==='dash')renderDash();
   if(p==='queue')renderQueue();
   if(p==='admin')renderAdmin();
@@ -1755,7 +1760,14 @@ async function resumeJob_impl(sid){
 
 // ── DONE — open qty modal ────────────────────────────────────────────────────
 function openDoneModal(sid){
-  const j=jobs.find(x=>x.stationId===sid);if(!j)return;
+  const j=jobs.find(x=>x.stationId===sid);
+  if(!j){
+    // Stale DONE button (its station id is no longer in the local list).
+    // Refresh from server so the worker gets fresh, working buttons —
+    // instead of the button doing nothing.
+    loadAll().then(()=>showToast('List refreshed — press DONE again / Da lam moi','red'));
+    return;
+  }
   doneTargetId=sid;
   const isFinal=j.group===FINAL;
   // For waiting jobs, remaining is what's left here
@@ -1777,7 +1789,18 @@ function openDoneModal(sid){
 
 async function confirmDone_impl(){
   const sentQty=parseInt(document.getElementById('doneQtyInput').value)||0;
-  const j=jobs.find(x=>x.stationId===doneTargetId);if(!j)return;
+  const j=jobs.find(x=>x.stationId===doneTargetId);
+  if(!j){
+    // The job the modal was opened for is no longer in the local list (stale
+    // button, or doneTargetId got cleared). Instead of failing silently —
+    // which looked like "DONE does nothing until I refresh" — close, refresh
+    // from the server, and tell the worker to try again.
+    closeModal('doneQtyModal');
+    doneTargetId=null;
+    await loadAll();
+    showToast('List refreshed — please press DONE again / Da lam moi, bam DONE lai','red');
+    return;
+  }
   const isFinal=j.group===FINAL;
   // Available = what this station actually received or has remaining
   const availableQty=j.state==='waiting'
