@@ -1432,6 +1432,45 @@ async function autoMergePartialPrep(){
   return changed;
 }
 
+// Single source of truth for the "job" object shape. rebuildJobs() builds the
+// global `jobs` array from this; openDoneModal/confirmDone use it as a fallback
+// so the DONE modal works even while loadAll() is mid-rebuild (jobs[] briefly
+// not yet repopulated). Returns null if the station isn't an alive job.
+function makeJob(line,st){
+  if(!line||!st)return null;
+  if(!['active','paused','waiting'].includes(st.state))return null;
+  const lineQty=parseInt(line.qty)||0;
+  const receivedQty=st.received_qty||0;
+  const isPartialStation=!!(st.is_partial)||( receivedQty>0&&receivedQty<lineQty);
+  const displayQty=isPartialStation&&receivedQty>0?receivedQty:lineQty;
+  return {
+    lineId:line.id,stationId:st.id,
+    so:line.so,item:line.item,
+    totalQty:lineQty,
+    displayQty:displayQty,
+    qty:isPartialStation?(displayQty+' pcs'):(line.qty),
+    group:st.grp,state:st.state,
+    startedAt:st.state==='active'?new Date(st.started_at).getTime():null,
+    elapsed:st.elapsed_ms||0,
+    note:st.note||'',
+    sentQty:st.sent_qty||0,
+    remainingQty:st.remaining_qty||0,
+    receivedQty:receivedQty,
+    isPartial:isPartialStation,
+    fromGrp:st.from_grp||null,
+    parentStationId:st.parent_station_id||null
+  };
+}
+// Find a single station across all lines and build its job object directly,
+// independent of the global `jobs` array.
+function buildJobForStation(sid){
+  for(const line of lines){
+    for(const st of (line.stations||[])){
+      if(st.id===sid)return makeJob(line,st);
+    }
+  }
+  return null;
+}
 function rebuildJobs(){
   // Atomic swap: build into a local array, then assign in ONE statement.
   // Previously `jobs=[]` then push() left a window where any reader
@@ -1440,30 +1479,8 @@ function rebuildJobs(){
   const nj=[];
   lines.forEach(line=>{
     line.stations.forEach(st=>{
-      if(['active','paused','waiting'].includes(st.state)){
-        const lineQty=parseInt(line.qty)||0;
-        const receivedQty=st.received_qty||0;
-        const isPartialStation=!!(st.is_partial)||( receivedQty>0&&receivedQty<lineQty);
-        // displayQty: what this station is actually working with
-        const displayQty=isPartialStation&&receivedQty>0?receivedQty:lineQty;
-        nj.push({
-          lineId:line.id,stationId:st.id,
-          so:line.so,item:line.item,
-          totalQty:lineQty,
-          displayQty:displayQty,
-          qty:isPartialStation?(displayQty+' pcs'):(line.qty),
-          group:st.grp,state:st.state,
-          startedAt:st.state==='active'?new Date(st.started_at).getTime():null,
-          elapsed:st.elapsed_ms||0,
-          note:st.note||'',
-          sentQty:st.sent_qty||0,
-          remainingQty:st.remaining_qty||0,
-          receivedQty:receivedQty,
-          isPartial:isPartialStation,
-          fromGrp:st.from_grp||null,
-          parentStationId:st.parent_station_id||null
-        });
-      }
+      const job=makeJob(line,st);
+      if(job)nj.push(job);
     });
   });
   jobs=nj;
@@ -1808,15 +1825,10 @@ async function resumeJob_impl(sid){
 
 // ── DONE — open qty modal ────────────────────────────────────────────────────
 function openDoneModal(sid){
-  const j=jobs.find(x=>x.stationId===sid);
+  const j=jobs.find(x=>x.stationId===sid)||buildJobForStation(sid);
   if(!j){
-    // jobs may be momentarily out of date because a loadAll() is rebuilding
-    // it right now (e.g. realtime fired from the previous DONE). Do NOT treat
-    // this as a stale button — wait briefly and retry; the station is almost
-    // certainly still valid, the array just isn't repopulated yet.
-    if(_loadAllInFlight){ setTimeout(()=>openDoneModal(sid),250); return; }
-    // Genuinely stale (its station id is no longer in the data). Refresh so
-    // the worker gets fresh, working buttons instead of a dead button.
+    // Genuinely not in the data (truly stale button). Refresh so the worker
+    // gets fresh, working buttons instead of a dead button.
     scheduleLoadAll();
     showToast('List refreshed — press DONE again / Da lam moi','red');
     return;
@@ -1842,14 +1854,9 @@ function openDoneModal(sid){
 
 async function confirmDone_impl(){
   const sentQty=parseInt(document.getElementById('doneQtyInput').value)||0;
-  const j=jobs.find(x=>x.stationId===doneTargetId);
+  const j=jobs.find(x=>x.stationId===doneTargetId)||buildJobForStation(doneTargetId);
   if(!j){
-    // jobs may be momentarily empty/partial because a loadAll() is rebuilding
-    // it (realtime from a previous action). The modal is still open with the
-    // worker's entered qty — do NOT discard it. Wait briefly and retry the
-    // confirm; the station is almost certainly still valid.
-    if(_loadAllInFlight){ setTimeout(()=>confirmDone_impl(),250); return; }
-    // Genuinely stale: close, refresh, ask the worker to retry.
+    // Truly not in the data. Close, refresh, ask the worker to retry.
     closeModal('doneQtyModal');
     doneTargetId=null;
     showToast('List refreshed — please press DONE again / Da lam moi, bam DONE lai','red');
