@@ -1188,7 +1188,36 @@ function showPage(p,el){
 }
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
+// Realtime fires one event per row change; a single DONE/TAKE produces several
+// (station update + new queue row + line update). Without debouncing, each
+// event launched its own parallel loadAll(), and while loadAll() was rebuilding
+// the global `jobs` array a second DONE click would hit an empty `jobs`, fall
+// into the "stale button" branch, and the modal would silently not open until
+// a manual refresh. scheduleLoadAll() coalesces a burst into ONE loadAll, and
+// loadAll() itself is now non-reentrant: if it's asked to run while already
+// running, it runs exactly once more afterwards (no overlap, no lost update).
+let _loadAllInFlight=false;
+let _loadAllQueued=false;
+let _loadAllTimer=null;
+function scheduleLoadAll(){
+  if(_loadAllTimer)clearTimeout(_loadAllTimer);
+  _loadAllTimer=setTimeout(()=>{ _loadAllTimer=null; loadAll(); }, 400);
+}
+
 async function loadAll(){
+  // Non-reentrant: never let two loadAll() runs overlap. A request that
+  // arrives mid-flight is collapsed into a single trailing run.
+  if(_loadAllInFlight){ _loadAllQueued=true; return; }
+  _loadAllInFlight=true;
+  try{
+    await _loadAllImpl();
+  } finally {
+    _loadAllInFlight=false;
+    if(_loadAllQueued){ _loadAllQueued=false; scheduleLoadAll(); }
+  }
+}
+
+async function _loadAllImpl(){
   setSyncDot('syncing');
   try{
     const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at');
@@ -1404,7 +1433,11 @@ async function autoMergePartialPrep(){
 }
 
 function rebuildJobs(){
-  jobs=[];
+  // Atomic swap: build into a local array, then assign in ONE statement.
+  // Previously `jobs=[]` then push() left a window where any reader
+  // (openDoneModal/confirmDone via jobs.find) saw an empty array and
+  // wrongly treated a valid station as a "stale button".
+  const nj=[];
   lines.forEach(line=>{
     line.stations.forEach(st=>{
       if(['active','paused','waiting'].includes(st.state)){
@@ -1413,7 +1446,7 @@ function rebuildJobs(){
         const isPartialStation=!!(st.is_partial)||( receivedQty>0&&receivedQty<lineQty);
         // displayQty: what this station is actually working with
         const displayQty=isPartialStation&&receivedQty>0?receivedQty:lineQty;
-        jobs.push({
+        nj.push({
           lineId:line.id,stationId:st.id,
           so:line.so,item:line.item,
           totalQty:lineQty,
@@ -1433,13 +1466,14 @@ function rebuildJobs(){
       }
     });
   });
+  jobs=nj;
 }
 
 function rebuildDone(){
-  doneList=[];
+  const nd=[];
   lines.forEach(line=>{
     line.stations.filter(s=>s.state==='done').forEach(st=>{
-      doneList.push({
+      nd.push({
         so:line.so,item:line.item,qty:line.qty,
         group:st.grp,totalMs:st.elapsed_ms||0,
         doneAt:st.done_at||'',fullyDone:line.fully_done,
@@ -1447,16 +1481,17 @@ function rebuildDone(){
       });
     });
   });
-  doneList.sort((a,b)=>b.doneAt>a.doneAt?1:-1);
+  nd.sort((a,b)=>b.doneAt>a.doneAt?1:-1);
+  doneList=nd;
 }
 
 function rebuildQueue(){
-  queueItems=[];
+  const nq=[];
   lines.forEach(line=>{
     line.stations.filter(s=>s.state==='queue').forEach(st=>{
       // For partial-prep merged rows, received_qty holds the movable amount.
       const q=(st.received_qty&&st.received_qty>0)?st.received_qty:(st.sent_qty||parseInt(line.qty)||0);
-      queueItems.push({
+      nq.push({
         id:st.id,lineId:line.id,
         so:line.so,item:line.item,
         qty:q,
@@ -1466,6 +1501,7 @@ function rebuildQueue(){
       });
     });
   });
+  queueItems=nq;
   const badge=document.getElementById('queueBadge');
   badge.textContent=queueItems.length;
   badge.className='queue-badge'+(queueItems.length>0?' on':'');
@@ -1473,8 +1509,8 @@ function rebuildQueue(){
 
 function setupRealtime(){
   sb.channel('shaxon-prod-v21')
-    .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>loadAll())
-    .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>loadAll())
+    .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>scheduleLoadAll())
+    .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>scheduleLoadAll())
     .subscribe();
 }
 
@@ -1774,10 +1810,15 @@ async function resumeJob_impl(sid){
 function openDoneModal(sid){
   const j=jobs.find(x=>x.stationId===sid);
   if(!j){
-    // Stale DONE button (its station id is no longer in the local list).
-    // Refresh from server so the worker gets fresh, working buttons —
-    // instead of the button doing nothing.
-    loadAll().then(()=>showToast('List refreshed — press DONE again / Da lam moi','red'));
+    // jobs may be momentarily out of date because a loadAll() is rebuilding
+    // it right now (e.g. realtime fired from the previous DONE). Do NOT treat
+    // this as a stale button — wait briefly and retry; the station is almost
+    // certainly still valid, the array just isn't repopulated yet.
+    if(_loadAllInFlight){ setTimeout(()=>openDoneModal(sid),250); return; }
+    // Genuinely stale (its station id is no longer in the data). Refresh so
+    // the worker gets fresh, working buttons instead of a dead button.
+    scheduleLoadAll();
+    showToast('List refreshed — press DONE again / Da lam moi','red');
     return;
   }
   doneTargetId=sid;
@@ -1803,14 +1844,16 @@ async function confirmDone_impl(){
   const sentQty=parseInt(document.getElementById('doneQtyInput').value)||0;
   const j=jobs.find(x=>x.stationId===doneTargetId);
   if(!j){
-    // The job the modal was opened for is no longer in the local list (stale
-    // button, or doneTargetId got cleared). Instead of failing silently —
-    // which looked like "DONE does nothing until I refresh" — close, refresh
-    // from the server, and tell the worker to try again.
+    // jobs may be momentarily empty/partial because a loadAll() is rebuilding
+    // it (realtime from a previous action). The modal is still open with the
+    // worker's entered qty — do NOT discard it. Wait briefly and retry the
+    // confirm; the station is almost certainly still valid.
+    if(_loadAllInFlight){ setTimeout(()=>confirmDone_impl(),250); return; }
+    // Genuinely stale: close, refresh, ask the worker to retry.
     closeModal('doneQtyModal');
     doneTargetId=null;
     showToast('List refreshed — please press DONE again / Da lam moi, bam DONE lai','red');
-    loadAll();
+    scheduleLoadAll();
     return;
   }
   const isFinal=j.group===FINAL;
