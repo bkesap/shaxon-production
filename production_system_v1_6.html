@@ -907,22 +907,16 @@ let _actionBusy=false;
 let _actionTimer=null;
 
 function _lockBadge(state){
-  // state: 'idle' | 'busy'. Visible proof of the action lock so we never
-  // have to guess again whether a press registered / the lock released.
+  // No more global lock. This badge is now just a visible version stamp so
+  // you can confirm at a glance which build is live.
   let b=document.getElementById('_lockBadge');
   if(!b){
     b=document.createElement('div');
     b.id='_lockBadge';
-    b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;';
+    b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  if(state==='busy'){
-    b.textContent='● LOCKED (working…)';
-    b.style.background='#c62828';b.style.color='#fff';
-  } else {
-    b.textContent='● READY (v5)';
-    b.style.background='#1b5e20';b.style.color='#fff';
-  }
+  b.textContent='● v6 — NO LOCK (free press)';
 }
 
 function lockActions(srcEl){
@@ -958,30 +952,46 @@ function releaseActions(){
   _lockBadge('idle');
 }
 
-// Wrap any critical async action. Returns a function that:
-//  - ignores the call if another action is in flight
-//  - locks + disables the source button
-//  - always releases (even on error) in finally
+// Wrap any critical async action.
+// OLD behaviour (the "protection" that BROKE things): a single global lock
+// (_actionBusy) disabled EVERY action button until the action AND its slow
+// refresh finished. The worker's legitimate next press was swallowed until a
+// 12s timeout or a manual page refresh. That is the bug.
+// NEW behaviour: NO global lock. Each press runs immediately. The ONLY thing
+// blocked is hammering the SAME button within 800ms (real accidental
+// double-click → would create a duplicate record). Pressing a different
+// product/button is never blocked. This restores the "old, working" feel
+// while still preventing accidental double submits.
+const _lastFire=new Map(); // key -> timestamp
 function guardedAction(fn){
   return async function(...args){
-    if(_actionBusy){
-      console.warn('Action ignored — another action in progress');
-      return;
-    }
-    // event.currentTarget is the button when called from onclick
+    // Identify the pressed button (for the per-button cooldown key).
     let srcEl=null;
     try{
       if(window.event&&window.event.currentTarget)srcEl=window.event.currentTarget;
       else if(window.event&&window.event.target)srcEl=window.event.target;
     }catch(e){}
-    lockActions(srcEl);
+    // Cooldown key: the function + the specific args (e.g. station id) so two
+    // DIFFERENT cards never block each other, but the SAME action fired twice
+    // in <800ms (accidental double tap) is ignored.
+    const key=(fn.name||'fn')+'|'+JSON.stringify(args);
+    const now=Date.now();
+    const prev=_lastFire.get(key);
+    if(prev&&(now-prev)<800){
+      console.warn('Duplicate press ignored (same action <800ms)');
+      return;
+    }
+    _lastFire.set(key,now);
+    // Brief visual feedback ONLY on the pressed button (not a global lock).
+    if(srcEl&&srcEl.tagName){
+      srcEl.style.opacity='0.6';
+      setTimeout(()=>{ try{srcEl.style.opacity='';}catch(e){} },600);
+    }
     try{
       return await fn.apply(this,args);
     }catch(err){
       console.error('Guarded action error:',err);
       throw err;
-    }finally{
-      releaseActions();
     }
   };
 }
@@ -5227,8 +5237,8 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v5 — Cutting lock fix + live badge';
-const BUILD_TIME = '2026-05-19 01:39 UTC';
+const BUILD_TAG  = 'v6 — no global lock';
+const BUILD_TIME = '2026-05-19 01:55 UTC';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
   '%c PRODUCTION SYSTEM '+BUILD_TAG+' %c built '+BUILD_TIME+' ',
