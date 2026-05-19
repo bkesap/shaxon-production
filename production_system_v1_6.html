@@ -5202,6 +5202,19 @@ const confirmDone      = guardedAction(confirmDone_impl);
 const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+// ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
+// Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
+// unambiguous which build is actually live (no more "is the new file up?").
+const BUILD_TAG  = 'v4 — modal jobs-independent fix';
+const BUILD_TIME = '2026-05-19 01:31 UTC';
+window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
+console.log(
+  '%c PRODUCTION SYSTEM '+BUILD_TAG+' %c built '+BUILD_TIME+' ',
+  'background:#1b5e20;color:#fff;font-size:14px;font-weight:700;padding:4px 8px;border-radius:4px 0 0 4px;',
+  'background:#2e7d32;color:#fff;font-size:14px;padding:4px 8px;border-radius:0 4px 4px 0;'
+);
+console.log('%c↳ If you do NOT see this line after refresh, the OLD file is still cached/deployed.','color:#1b5e20;font-style:italic;');
+
 async function init(){
   loadShiftSettings();
   updateClock();
