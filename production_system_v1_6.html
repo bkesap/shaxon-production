@@ -906,8 +906,28 @@ let adminDelTarget=null;
 let _actionBusy=false;
 let _actionTimer=null;
 
+function _lockBadge(state){
+  // state: 'idle' | 'busy'. Visible proof of the action lock so we never
+  // have to guess again whether a press registered / the lock released.
+  let b=document.getElementById('_lockBadge');
+  if(!b){
+    b=document.createElement('div');
+    b.id='_lockBadge';
+    b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;';
+    document.body.appendChild(b);
+  }
+  if(state==='busy'){
+    b.textContent='● LOCKED (working…)';
+    b.style.background='#c62828';b.style.color='#fff';
+  } else {
+    b.textContent='● READY (v5)';
+    b.style.background='#1b5e20';b.style.color='#fff';
+  }
+}
+
 function lockActions(srcEl){
   _actionBusy=true;
+  _lockBadge('busy');
   // Disable + grey the button that was pressed (visual feedback for workers)
   if(srcEl&&srcEl.tagName){
     srcEl.dataset._wasDisabled=srcEl.disabled?'1':'0';
@@ -918,7 +938,7 @@ function lockActions(srcEl){
   }
   // Safety net: never stay locked more than 12s (slow network protection)
   if(_actionTimer)clearTimeout(_actionTimer);
-  _actionTimer=setTimeout(()=>{ _actionBusy=false; unlockAllButtons(); },12000);
+  _actionTimer=setTimeout(()=>{ _actionBusy=false; unlockAllButtons(); _lockBadge('idle'); },12000);
 }
 
 function unlockAllButtons(){
@@ -935,6 +955,7 @@ function releaseActions(){
   _actionBusy=false;
   if(_actionTimer){clearTimeout(_actionTimer);_actionTimer=null;}
   unlockAllButtons();
+  _lockBadge('idle');
 }
 
 // Wrap any critical async action. Returns a function that:
@@ -1749,24 +1770,27 @@ async function confirmStart_impl(){
 
     // If Cutting → automatically start Part Pull as well (mandatory, no modal)
     if(team==='Cutting'){
-      // Cutting needs fresh `lines` to locate currentLine for the auto
-      // Part-Pull insert, so this path keeps the awaited refresh. It is a
-      // rare two-step start, not the hot TAKE/DONE loop.
-      await loadAll();
-      const currentLine=lines.find(l=>l.so===so&&l.item===item);
-      const ALIVE=['active','paused','waiting','done'];
-      const ppExists=currentLine&&currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
-      if(!ppExists&&currentLine){
+      // We ALREADY have lineId (from existingLine or the start RPC). Do NOT
+      // await loadAll() here — that kept _actionBusy locked for the whole
+      // slow refresh, so the worker's NEXT press was swallowed by the guard
+      // until a manual refresh. Insert Part Pull straight onto the known
+      // line, then refresh fire-and-forget (lock already released).
+      let ppExists=false;
+      if(existingLine){
+        const ALIVE=['active','paused','waiting','done'];
+        ppExists=(existingLine.stations||[]).some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
+      }
+      if(!ppExists&&lineId){
         try{
           await sb.from('stations').insert({
-            line_id:currentLine.id,grp:'Part Pull',state:'active',
+            line_id:lineId,grp:'Part Pull',state:'active',
             started_at:new Date().toISOString(),elapsed_ms:0,
             done_at:null,note:null,sent_qty:0,remaining_qty:qty
           });
           showToast('✓ Part Pull auto-started','green');
-          loadAll();
         }catch(err){console.error('Auto Part Pull error',err);showToast('Error auto-starting Part Pull','red');}
       }
+      loadAll();
     } else {
       // Common path: write is committed. Refresh OUTSIDE the action lock so
       // the guard releases immediately (no stuck _actionBusy → next action
@@ -4787,6 +4811,7 @@ async function handleBulkStart_impl(){
 
   setSyncDot('syncing');
   let started=0;
+  const _startedLines=[]; // {lineId, item, qty, hadPartPull}
   try{
     for(const {item,qty} of items){
       let lineId;
@@ -4804,37 +4829,34 @@ async function handleBulkStart_impl(){
         done_at:null,note:null,sent_qty:0,remaining_qty:qty
       });
       if(se)throw se;
+      const ALIVE0=['active','paused','waiting','done'];
+      const hadPartPull=!!(existingLine&&(existingLine.stations||[]).some(s=>s.grp==='Part Pull'&&ALIVE0.includes(s.state)));
+      _startedLines.push({lineId,item,qty,hadPartPull});
       started++;
     }
     closeBulkSO();
     document.getElementById('inputSO').value='';
     showToast('✓ Started '+started+' items for '+so,'green');
 
-    // If Cutting → automatically start Part Pull for all items (mandatory, no modal)
-    if(team==='Cutting'&&items.length>0){
-      // Cutting needs fresh `lines` to locate currentLine per item, so this
-      // path keeps the awaited refresh (rare bulk two-step start).
-      await loadAll();
-      const ALIVE=['active','paused','waiting','done'];
+    // If Cutting → automatically start Part Pull for all items (mandatory, no
+    // modal). We ALREADY know every lineId — do NOT await loadAll() here, that
+    // kept _actionBusy locked through the slow refresh and swallowed the
+    // worker's next press until a manual refresh.
+    if(team==='Cutting'&&_startedLines.length>0){
       let ppStarted=0;
-      for(const {item,qty} of items){
-        const currentLine=lines.find(l=>l.so===so&&l.item===item);
-        if(!currentLine)continue;
-        const ppExists=currentLine.stations.some(s=>s.grp==='Part Pull'&&ALIVE.includes(s.state));
-        if(ppExists)continue;
+      for(const {lineId,qty,hadPartPull} of _startedLines){
+        if(hadPartPull||!lineId)continue;
         try{
           await sb.from('stations').insert({
-            line_id:currentLine.id,grp:'Part Pull',state:'active',
+            line_id:lineId,grp:'Part Pull',state:'active',
             started_at:new Date().toISOString(),elapsed_ms:0,
             done_at:null,note:null,sent_qty:0,remaining_qty:qty
           });
           ppStarted++;
         }catch(err){console.error('Auto Part Pull error',err);}
       }
-      if(ppStarted>0){
-        showToast('✓ Part Pull auto-started for '+ppStarted+' item(s)','green');
-        loadAll();
-      }
+      if(ppStarted>0)showToast('✓ Part Pull auto-started for '+ppStarted+' item(s)','green');
+      loadAll();
     } else {
       // Common path: writes committed. Refresh OUTSIDE the action lock so the
       // guard releases immediately. Realtime re-renders too.
@@ -5205,8 +5227,8 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v4 — modal jobs-independent fix';
-const BUILD_TIME = '2026-05-19 01:31 UTC';
+const BUILD_TAG  = 'v5 — Cutting lock fix + live badge';
+const BUILD_TIME = '2026-05-19 01:39 UTC';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
   '%c PRODUCTION SYSTEM '+BUILD_TAG+' %c built '+BUILD_TIME+' ',
@@ -5216,6 +5238,7 @@ console.log(
 console.log('%c↳ If you do NOT see this line after refresh, the OLD file is still cached/deployed.','color:#1b5e20;font-style:italic;');
 
 async function init(){
+  _lockBadge('idle');
   loadShiftSettings();
   updateClock();
   updateShiftBar();
