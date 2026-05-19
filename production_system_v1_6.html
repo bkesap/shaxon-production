@@ -3049,6 +3049,18 @@ function renderAdmin(){
         </div>
       </div>
     </div>
+    <div class="admin-section" data-sec="dupqueue">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('dupqueue')">🧯 Duplicate Queue Cleaner / Cift hang cho temizligi</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Finds <strong>duplicate queue rows</strong> left by old bugs: the SAME <strong>SO + Item + Qty</strong> sitting in the queue more than once. The row with the <strong>newest timestamp is kept</strong>; the older copies (older date, or old time-only / blank timestamps from legacy data) are <strong>permanently DELETED</strong>. Groups where the newest row can't be determined (all timestamps blank/time-only) are flagged for manual review and never auto-deleted. <strong>Preview first — deletion is permanent.</strong>
+          </div>
+          <button onclick="findDuplicateQueues()" style="width:fit-content;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">🧯 Find Duplicate Queues</button>
+          <div id="dupqueueResult" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
     <div class="admin-section" data-sec="shift">
       <div class="admin-section-hdr" onclick="toggleAdminSection('shift')">⏱ Shift Settings / Cai dat ca lam viec</div>
       <div class="admin-section-body">
@@ -4161,6 +4173,137 @@ async function fixFlowGarbage(){
     console.error('Flow fix error:',err);
     setSyncDot('error');
     showToast('Fix failed: '+(err.message||''),'red');
+  }
+}
+
+// ── DUPLICATE QUEUE CLEANER ─────────────────────────────────────────────────
+// Old bugs left duplicate queue rows: the SAME SO+item+qty sitting in the
+// queue more than once. Keep the row with the newest timestamp, permanently
+// DELETE the older copies. `done_at` may be a real ISO datetime (new rows,
+// nowIso) OR a legacy time-only string ("3:30 PM", old nowStr) OR null/blank.
+// Only ISO-parseable values count as a real date; anything else sorts as
+// "oldest" (-Infinity) and is a deletion candidate. If a group has NO
+// ISO-parseable timestamp at all, the newest can't be determined — that
+// group is flagged ambiguous and is NEVER auto-deleted.
+function _dupQueueTs(v){
+  if(!v)return -Infinity;
+  // Reject pure time-only legacy values like "3:30 PM" / "11:05 AM".
+  if(/^\s*\d{1,2}:\d{2}\s*(AM|PM)?\s*$/i.test(String(v)))return -Infinity;
+  const t=new Date(v).getTime();
+  return isNaN(t)?-Infinity:t;
+}
+function detectDuplicateQueues(){
+  const groups=new Map();
+  for(const line of lines){
+    const qty=parseInt(line.qty)||0;
+    for(const st of (line.stations||[])){
+      if(st.state!=='queue')continue;            // ONLY queue rows
+      const key=line.so+'||'+line.item+'||'+qty;
+      if(!groups.has(key))groups.set(key,{so:line.so,item:line.item,qty,rows:[]});
+      groups.get(key).rows.push({
+        id:st.id,lineId:line.id,
+        done_at:st.done_at||'',ts:_dupQueueTs(st.done_at),
+        fromGroup:st.grp
+      });
+    }
+  }
+  const result=[]; // each: {so,item,qty,total,keep,removable[],ambiguous}
+  for(const g of groups.values()){
+    if(g.rows.length<2)continue;                  // not a duplicate
+    const maxTs=Math.max(...g.rows.map(r=>r.ts));
+    if(maxTs===-Infinity){
+      // No row has a usable date → cannot safely pick newest.
+      result.push({so:g.so,item:g.item,qty:g.qty,total:g.rows.length,
+        keep:null,removable:[],ambiguous:true});
+      continue;
+    }
+    // Keep exactly ONE: the newest ISO row. If several share the same max
+    // ts (rare), keep the first of those, remove the rest.
+    let kept=false;
+    const keep=[],removable=[];
+    for(const r of g.rows.sort((a,b)=>b.ts-a.ts)){
+      if(!kept&&r.ts===maxTs){ keep.push(r); kept=true; }
+      else removable.push(r);
+    }
+    result.push({so:g.so,item:g.item,qty:g.qty,total:g.rows.length,
+      keep:keep[0],removable,ambiguous:false});
+  }
+  return result;
+}
+function findDuplicateQueues(){
+  const el=document.getElementById('dupqueueResult');
+  const groups=detectDuplicateQueues();
+  if(!groups.length){
+    el.style.display='block';
+    el.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">✅ No duplicate queue rows found.</div>`;
+    window._dupQueuePending=null;
+    return;
+  }
+  const removableTotal=groups.reduce((n,g)=>n+g.removable.length,0);
+  const ambiguousGroups=groups.filter(g=>g.ambiguous);
+  const rows=groups.map(g=>{
+    if(g.ambiguous){
+      return `<tr style="background:#FFF8E1;">
+        <td style="font-weight:600;color:var(--blue);">${g.so}</td>
+        <td class="item-num" title="${g.item}">${g.item}</td>
+        <td>${g.qty}</td>
+        <td>${g.total}</td>
+        <td colspan="2" style="font-size:11px;color:var(--amber-dk);">⚠️ All timestamps blank/time-only — newest unknown. Manual review, not auto-deleted.</td>
+      </tr>`;
+    }
+    const keepWhen=g.keep&&g.keep.done_at?g.keep.done_at:'—';
+    return `<tr>
+      <td style="font-weight:600;color:var(--blue);">${g.so}</td>
+      <td class="item-num" title="${g.item}">${g.item}</td>
+      <td>${g.qty}</td>
+      <td>${g.total}</td>
+      <td style="font-size:11px;color:#1b5e20;">keep newest: ${keepWhen}</td>
+      <td style="font-size:11px;color:var(--red-dk);">delete ${g.removable.length} older</td>
+    </tr>`;
+  }).join('');
+  el.style.display='block';
+  el.innerHTML=`
+    <div style="background:#FFEBEE;border:1px solid var(--red);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;font-size:13px;color:var(--red-dk);">
+      🧯 <strong>${groups.length} duplicate group(s)</strong> · <strong>${removableTotal} row(s) will be permanently DELETED</strong>.
+      ${ambiguousGroups.length?`<br>⚠️ ${ambiguousGroups.length} ambiguous group(s) skipped (manual review).`:''}
+      <br>The newest row of each group is kept. <strong>This cannot be undone.</strong>
+    </div>
+    <table class="admin-table" style="margin-bottom:8px;">
+      <thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>#Dup</th><th>Keep</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${removableTotal?`<button onclick="fixDuplicateQueues()" style="padding:9px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">🗑 Delete All ${removableTotal} Older Duplicate(s)</button>`:''}`;
+  window._dupQueuePending=groups;
+}
+async function fixDuplicateQueues(){
+  const groups=window._dupQueuePending||[];
+  const removable=groups.filter(g=>!g.ambiguous).flatMap(g=>g.removable);
+  if(!removable.length){showToast('Nothing to delete','red');return;}
+  if(!confirm('PERMANENTLY DELETE '+removable.length+' older duplicate queue row(s)?\n\nThe newest copy of each SO+Item+Qty is kept. This CANNOT be undone.\n\nXoa vinh vien '+removable.length+' dong trung lap?'))return;
+  setSyncDot('syncing');
+  showToast('Deleting '+removable.length+' duplicate(s)...');
+  try{
+    let deleted=0;
+    for(const r of removable){
+      // Re-check it's STILL a queue row before deleting (avoid racing with
+      // realtime / a worker who just took it).
+      const ln=lines.find(l=>l.id===r.lineId);
+      const st=ln&&ln.stations.find(s=>s.id===r.id);
+      if(!st||st.state!=='queue')continue;
+      const {error}=await sb.from('stations').delete().eq('id',r.id).eq('state','queue');
+      if(error){console.warn('dup delete failed:',r.id,error);continue;}
+      deleted++;
+    }
+    await loadAll();
+    document.getElementById('dupqueueResult').style.display='none';
+    showToast('✅ Deleted '+deleted+' duplicate queue row(s) / Da xoa '+deleted,'green');
+    setSyncDot('ok');
+    window._dupQueuePending=null;
+    renderAdmin();
+  }catch(err){
+    console.error('Duplicate queue cleanup error:',err);
+    setSyncDot('error');
+    showToast('Cleanup failed: '+(err.message||''),'red');
   }
 }
 
