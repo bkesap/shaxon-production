@@ -1745,6 +1745,20 @@ async function confirmStart_impl(){
   try{
     let lineId;
     if(existingLine){
+      // FRESH duplicate check right before insert. handleStart may have run
+      // seconds ago with stale local data — another device could have started
+      // the same SO+item meanwhile. New-line branch is safe (server RPC is
+      // atomic + idempotent), so we only need to guard the existingLine path.
+      const ALIVE_STATES=['active','paused','waiting','done','queue'];
+      const {data:freshSts,error:fsErr}=await sb.from('stations').select('*').eq('line_id',existingLine.id);
+      if(fsErr)throw fsErr;
+      const alive=(freshSts||[]).filter(s=>ALIVE_STATES.includes(s.state));
+      if(alive.length>0){
+        const where=alive.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
+        setSyncDot('idle');
+        showToast('🚫 '+item+' already in system: '+where,'red');
+        return;
+      }
       // Existing line just needs a new active station — keep simple path
       lineId=existingLine.id;
       const {error:se}=await sb.from('stations').insert({
@@ -3856,6 +3870,42 @@ function detectZombies(){
           }
         }
       }
+      // Signature (c): long-lived same-team duplicates that escaped (a) and (b)
+      // — e.g. cross-device race condition where a Bulk SO and a Start happen
+      // simultaneously but their writes land >10s apart. Two distinct
+      // signatures qualify here:
+      //   c1: an alive 'active'/'paused' station COEXISTS with a 'queue' for
+      //       the same team on the same line. Prep is a one-shot stage; the
+      //       team cannot be working AND have its output already queued.
+      //   c2: 2+ 'active' stations for the same team on the same line at any
+      //       time spread (no one team should be active twice on one line).
+      // For each, keep the NEWEST and flag the older ones as zombies. The
+      // newest reflects the most recent worker intent; older copies are stale.
+      const aliveActive=aliveTeam.filter(s=>s.state==='active'||s.state==='paused');
+      const aliveQueue=aliveTeam.filter(s=>s.state==='queue');
+      // c1: active/paused + queue coexisting for same team on same line
+      if(aliveActive.length>=1&&aliveQueue.length>=1){
+        // Keep newest of all of them combined; flag the rest
+        const combined=[...aliveActive,...aliveQueue]
+          .filter(s=>(s.sent_qty||0)>0||s.state==='active'||s.state==='paused')
+          .sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
+        for(let i=1;i<combined.length;i++){
+          const s=combined[i];
+          if(!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' duplicate ('+s.state+' coexists with another '+team+' row — cross-device race)'});
+          }
+        }
+      }
+      // c2: 2+ 'active' stations for the same team
+      if(aliveActive.length>=2){
+        const sorted=[...aliveActive].sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
+        for(let i=1;i<sorted.length;i++){
+          const s=sorted[i];
+          if(!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' duplicate (multiple active stations for same team — cross-device race)'});
+          }
+        }
+      }
     }
 
     // Type C: Item fully_done but stations still alive (skip Test/Pack with done_at — consistency tool handles)
@@ -4801,31 +4851,49 @@ async function handleBulkStart_impl(){
   }
   if(!items.length){showToast('Add at least one item / Them it nhat mot san pham');return;}
 
-  // Validate — strict duplicate check
+  // Validate — strict duplicate check (FRESH from DB to close cross-device race)
   const ALIVE_STATES=['active','paused','waiting','done','queue'];
+  setSyncDot('syncing');
+  let freshLinesBulk=[],freshStationsBulk=[];
+  try{
+    const {data:flData,error:flErr}=await sb.from('lines').select('*').eq('so',so);
+    if(flErr)throw flErr;
+    freshLinesBulk=flData||[];
+    if(freshLinesBulk.length>0){
+      const ids=freshLinesBulk.map(l=>l.id);
+      const {data:fsData,error:fsErr}=await sb.from('stations').select('*').in('line_id',ids);
+      if(fsErr)throw fsErr;
+      freshStationsBulk=fsData||[];
+    }
+  }catch(err){
+    console.error('Bulk fresh check failed',err);setSyncDot('error');
+    showToast('Error verifying duplicates — try again / Loi kiem tra','red');
+    return;
+  }
   for(const {item,qty} of items){
-    const existingLine=lines.find(l=>l.so===so&&l.item===item);
+    const existingLine=freshLinesBulk.find(l=>l.item===item);
     if(existingLine){
       if(existingLine.fully_done){
+        setSyncDot('idle');
         showToast(item+' already completed / Da hoan thanh','red');
         return;
       }
-      const aliveStations=existingLine.stations.filter(s=>ALIVE_STATES.includes(s.state));
+      const aliveStations=freshStationsBulk.filter(s=>s.line_id===existingLine.id&&ALIVE_STATES.includes(s.state));
       if(aliveStations.length>0){
         const where=aliveStations.map(s=>shortGrp(s.grp)+' ('+s.state+')').join(', ');
+        setSyncDot('idle');
         showToast(item+' already in system: '+where,'red');
         return;
       }
     }
   }
 
-  setSyncDot('syncing');
   let started=0;
   const _startedLines=[]; // {lineId, item, qty, hadPartPull}
   try{
     for(const {item,qty} of items){
       let lineId;
-      const existingLine=lines.find(l=>l.so===so&&l.item===item);
+      const existingLine=freshLinesBulk.find(l=>l.item===item);
       if(existingLine){
         lineId=existingLine.id;
       } else {
@@ -4840,7 +4908,7 @@ async function handleBulkStart_impl(){
       });
       if(se)throw se;
       const ALIVE0=['active','paused','waiting','done'];
-      const hadPartPull=!!(existingLine&&(existingLine.stations||[]).some(s=>s.grp==='Part Pull'&&ALIVE0.includes(s.state)));
+      const hadPartPull=!!(existingLine&&freshStationsBulk.some(s=>s.line_id===existingLine.id&&s.grp==='Part Pull'&&ALIVE0.includes(s.state)));
       _startedLines.push({lineId,item,qty,hadPartPull});
       started++;
     }
