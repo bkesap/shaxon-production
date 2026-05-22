@@ -3894,6 +3894,24 @@ function detectZombies(){
           }
         }
       }
+      // Signature (d): ORPHAN QUEUE row. A queue row for this team exists, but
+      // there is NO done row for the SAME team on this line. A queue row is
+      // legitimate only when produced by a DONE — if there is no parent done,
+      // it's residue from a deleted/undone done or a race condition where the
+      // queue write landed but the done update was rolled back. Flag the queue
+      // rows; keep the active/paused/waiting one (= current worker intent).
+      // This is what catches the SO 810640 case where every line shows
+      // "Cutting → Queue + Cutting active + Part Pull active" with no done.
+      const teamHasDone=teamSts.some(s=>s.state==='done');
+      const teamHasAlive=aliveTeam.some(s=>['active','paused','waiting'].includes(s.state));
+      if(!teamHasDone&&teamHasAlive){
+        const orphanQueues=aliveTeam.filter(s=>s.state==='queue');
+        orphanQueues.forEach(s=>{
+          if(!zombies.some(z=>z.stationId===s.id)){
+            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' orphan queue row (no parent done — leftover from deleted/undone work)'});
+          }
+        });
+      }
     }
 
     // Type C: Item fully_done but stations still alive (skip Test/Pack with done_at — consistency tool handles)
