@@ -3817,16 +3817,21 @@ function detectZombies(){
       }
     });
 
-    // Type B: Same team finished a qty, but the SAME qty is alive/queued again.
+    // Type B: Same team finished a qty, but the SAME qty is alive again.
     // Rule (user): same SO+item+qty done → cannot be taken again (duplicate).
     //              different qty → allowed (legit back-order for remaining pcs).
+    // CRITICAL: exclude state='queue' from candidates. After a team DONE's a
+    // qty, the system writes a queue row with grp=that team and the same qty
+    // — that row is the LEGIT output (from_grp) waiting for the next team to
+    // pick up. It is never a duplicate of the done row.
     const allTeams=['Cutting','Part Pull','C1','C2','C3','C4',FINAL_TEAM];
     for(const team of allTeams){
       const teamSt=sts.filter(s=>s.grp===team);
       const doneQtys=teamSt.filter(s=>s.state==='done').map(s=>s.sent_qty||0);
       if(!doneQtys.length)continue;
-      // Any alive/queue station whose qty matches an already-done qty = duplicate
-      teamSt.filter(s=>['active','paused','waiting','queue'].includes(s.state)).forEach(s=>{
+      // Only flag ACTIVE/PAUSED/WAITING with same qty as a prior DONE.
+      // queue rows are post-done output and must NOT be flagged here.
+      teamSt.filter(s=>['active','paused','waiting'].includes(s.state)).forEach(s=>{
         const q=s.sent_qty||0;
         if(doneQtys.includes(q)){
           if(!zombies.some(z=>z.stationId===s.id)){
@@ -3870,33 +3875,16 @@ function detectZombies(){
           }
         }
       }
-      // Signature (c): long-lived same-team duplicates that escaped (a) and (b)
-      // — e.g. cross-device race condition where a Bulk SO and a Start happen
-      // simultaneously but their writes land >10s apart. Two distinct
-      // signatures qualify here:
-      //   c1: an alive 'active'/'paused' station COEXISTS with a 'queue' for
-      //       the same team on the same line. Prep is a one-shot stage; the
-      //       team cannot be working AND have its output already queued.
-      //   c2: 2+ 'active' stations for the same team on the same line at any
-      //       time spread (no one team should be active twice on one line).
-      // For each, keep the NEWEST and flag the older ones as zombies. The
-      // newest reflects the most recent worker intent; older copies are stale.
+      // Signature (c): cross-device race condition signature.
+      // After multiple analyses (see todo: false-positive fix), the ONLY safe
+      // signature for long-lived race duplicates is "2+ active stations for
+      // the SAME team on the SAME line". An (active + queue) coexistence is
+      // NOT necessarily a duplicate: a team can be working on item B while a
+      // queue row for item A is still waiting pickup — but those would be
+      // different lines anyway. On the SAME line, even (active + queue) can
+      // arise legitimately for partial back-orders, so we no longer flag it.
+      // 2+ active on the same line + same team is unambiguous — keep newest.
       const aliveActive=aliveTeam.filter(s=>s.state==='active'||s.state==='paused');
-      const aliveQueue=aliveTeam.filter(s=>s.state==='queue');
-      // c1: active/paused + queue coexisting for same team on same line
-      if(aliveActive.length>=1&&aliveQueue.length>=1){
-        // Keep newest of all of them combined; flag the rest
-        const combined=[...aliveActive,...aliveQueue]
-          .filter(s=>(s.sent_qty||0)>0||s.state==='active'||s.state==='paused')
-          .sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
-        for(let i=1;i<combined.length;i++){
-          const s=combined[i];
-          if(!zombies.some(z=>z.stationId===s.id)){
-            zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' duplicate ('+s.state+' coexists with another '+team+' row — cross-device race)'});
-          }
-        }
-      }
-      // c2: 2+ 'active' stations for the same team
       if(aliveActive.length>=2){
         const sorted=[...aliveActive].sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
         for(let i=1;i<sorted.length;i++){
