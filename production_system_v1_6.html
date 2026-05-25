@@ -2068,6 +2068,25 @@ function teamBlockReason(line,team,qty,isPartialMerged){
   // "already active". Real double-taps are stopped by the action guard +
   // zombie Type B2. When a C-team is already working this item and another
   // back-order piece arrives, executeDone's merge step folds them together.
+  //
+  // EXCEPTION (user rule): If THIS C-team has already done the FULL qty for
+  // this line (a non-partial done covering the entire line qty), it cannot
+  // take it again — its job is finished. Partial dones still allow re-take
+  // because back-order pieces are legit follow-ups.
+  if(C_TEAMS.includes(team)){
+    const lineQty=parseInt((line.qty||'').toString().match(/[0-9]+/)||[0],10);
+    if(lineQty>0){
+      const fullDone=line.stations.some(s=>
+        s.grp===team &&
+        s.state==='done' &&
+        !s.is_partial &&
+        (s.sent_qty||0) >= lineQty
+      );
+      if(fullDone){
+        return shortGrp(team)+' already finished full qty for this order';
+      }
+    }
+  }
   return null;
 }
 
