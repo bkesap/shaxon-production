@@ -2542,7 +2542,7 @@ function renderDaily(){
 }
 
 // ── RENDER SCHEDULE ───────────────────────────────────────────────────────────
-function computeMaterialStatus(parsed,inv){
+function computeMaterialStatus(parsed,inv,po){
   // Returns {level, color, bg, icon, label}
   if(!parsed||!parsed.material){
     if(parsed&&parsed.status==='ready')return {level:'ok',color:'#1b5e20',bg:'var(--green-lt)',icon:'✅',label:'Ready'};
@@ -2555,7 +2555,7 @@ function computeMaterialStatus(parsed,inv){
   // No inventory data
   if(!inv)return {level:'no_inv',color:'var(--txt3)',bg:'var(--bg2)',icon:'❓',label:'no inv data'};
   const onHand=Number(inv.qty_on_hand)||0;
-  const onOrder=Number(inv.qty_on_order)||0;
+  const onOrder=po?Number(po.qty)||0:0;
   // Stock-only logic (no BOM comparison)
   if(onHand>0)return {level:'ok',color:'#1b5e20',bg:'var(--green-lt)',icon:'✅',label:'In stock'};
   if(onOrder>0)return {level:'po',color:'var(--amber-dk)',bg:'var(--amber-lt)',icon:'🟡',label:'PO only'};
@@ -2603,8 +2603,10 @@ function renderSchedule(){
     const invResult=parsed&&parsed.material?lookupInventory(parsed.material):null;
     const inv=invResult?invResult.match:null;
     const invFuzzy=invResult?invResult.fuzzy:false;
+    // PO resolution: respects the line's SO. Allocated PO wins over general POs.
+    const po=parsed&&parsed.material?lookupInventoryPo(parsed.material,line.so):{qty:0,eta:null,source:'none',otherSos:[]};
     const ship=soMetaMap.get(String(line.so).toUpperCase());
-    const matStatus=computeMaterialStatus(parsed,inv);
+    const matStatus=computeMaterialStatus(parsed,inv,po);
     const shipStatus=computeShipStatus(ship);
     // Risk score: lower is safer
     let risk=0;
@@ -2614,7 +2616,7 @@ function renderSchedule(){
     if(shipStatus.level==='late')risk+=200;
     else if(shipStatus.level==='urgent')risk+=80;
     else if(shipStatus.level==='soon')risk+=30;
-    items.push({line,current,noteText,parsed,inv,ship,matStatus,shipStatus,risk});
+    items.push({line,current,noteText,parsed,inv,po,ship,matStatus,shipStatus,risk});
   }
 
   // Search filter
@@ -2668,16 +2670,22 @@ function renderSchedule(){
       matCode=`<span style="font-weight:600;color:var(--blue-dk);font-family:monospace;font-size:12px;">${it.parsed.material}${fuzzyHint}${multiHint}</span>`;
       if(it.inv){
         const oh=Number(it.inv.qty_on_hand)||0;
-        const oo=Number(it.inv.qty_on_order)||0;
         onHandCell=`<span style="font-weight:500;">${oh.toLocaleString()}</span>`;
-        if(oo>0)onOrderCell=`<span style="color:var(--blue-dk);font-weight:500;">${oo.toLocaleString()}</span>`;
-        else onOrderCell='<span style="color:var(--txt3);">0</span>';
-        if(it.inv.earliest_eta){
-          const ed=new Date(it.inv.earliest_eta);
-          etaCell=`<span style="font-size:12px;">${ed.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</span>`;
-        }
       } else {
         onHandCell='<span style="color:var(--amber-dk);font-size:11px;">no data</span>';
+      }
+      // On PO + ETA come from the PO resolver (respects line.so)
+      const oo=Number(it.po.qty)||0;
+      if(oo>0){
+        const hint=it.po.source==='allocated'?'Allocated to this SO':'General PO (not allocated to any SO)';
+        const fg=it.po.source==='allocated'?'#1b5e20':'var(--blue-dk)';
+        onOrderCell=`<span style="color:${fg};font-weight:500;" title="${hint}">${oo.toLocaleString()}</span>`;
+      } else {
+        onOrderCell='<span style="color:var(--txt3);">0</span>';
+      }
+      if(it.po.eta){
+        const ed=new Date(it.po.eta);
+        etaCell=`<span style="font-size:12px;">${ed.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</span>`;
       }
       const ms=it.matStatus;
       statusCell=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;background:${ms.bg};color:${ms.color};white-space:nowrap;font-weight:500;">${ms.icon} ${ms.label}</span>`;
@@ -2706,15 +2714,18 @@ function renderSchedule(){
       salesCell=`<span style="font-size:12px;">${String(it.ship.sales_person).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
 
-    // Special Order cell — comes from the matched inventory row
+    // Special Order cell — derived from PO resolution
+    //   allocated → green pill with current SO
+    //   general  → if other SOs claim this material, show a muted "blocked by SO X" hint
+    //   none     → "—"
     let specialCell='<span style="color:var(--txt3);">—</span>';
-    if(it.inv&&it.inv.special_order_so){
-      const so=String(it.inv.special_order_so).trim();
-      const matchesCurrent=so.toUpperCase()===String(l.so||'').toUpperCase();
-      // Highlight when material is reserved for THIS SO (green); otherwise muted (this material is tied to another SO)
-      const bg=matchesCurrent?'var(--green-lt)':'#F3E5F5';
-      const fg=matchesCurrent?'#1b5e20':'#6a1b9a';
-      specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:${bg};color:${fg};white-space:nowrap;font-weight:500;" title="${matchesCurrent?'Reserved for this SO':'Reserved for SO '+so}">${so}</span>`;
+    if(it.po&&it.po.source==='allocated'){
+      specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:var(--green-lt);color:#1b5e20;white-space:nowrap;font-weight:500;" title="PO allocated to this SO">${l.so}</span>`;
+    } else if(it.po&&it.po.otherSos&&it.po.otherSos.length){
+      const first=it.po.otherSos[0];
+      const more=it.po.otherSos.length>1?` +${it.po.otherSos.length-1}`:'';
+      const tooltip=it.po.otherSos.join(', ');
+      specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:#F3E5F5;color:#6a1b9a;white-space:nowrap;font-weight:500;" title="This material is also reserved for: ${tooltip}">${first}${more}</span>`;
     }
 
     let rowBg='';
@@ -3312,12 +3323,14 @@ function toggleAdminSection(key){
 }
 
 // ── INVENTORY + SALES ORDER SYNC ────────────────────────────────────────────
-let inventoryMap=new Map();   // item_code -> {qty_on_hand, qty_on_order, earliest_eta, last_synced}
-let soMetaMap=new Map();      // so_number -> {ship_date, customer, priority, last_synced}
+let inventoryMap=new Map();    // item_code -> {qty_on_hand, last_synced}
+let inventoryPoMap=new Map();  // item_code -> [{so_number, qty_on_order, earliest_eta}, ...]
+let soMetaMap=new Map();       // so_number -> {ship_date, customer, priority, sales_person, last_synced}
 
 async function loadInventoryAndSO(){
   try{
     inventoryMap.clear();
+    inventoryPoMap.clear();
     soMetaMap.clear();
     // Inventory — paginate to bypass Supabase 10k row limit
     const PAGE=1000;
@@ -3327,6 +3340,30 @@ async function loadInventoryAndSO(){
       if(error)throw error;
       if(!data||!data.length)break;
       data.forEach(r=>inventoryMap.set((r.item_code||'').toUpperCase().trim(),r));
+      if(data.length<PAGE)break;
+      from+=PAGE;
+    }
+    // Inventory PO — paginate (one item may have many PO rows)
+    from=0;
+    while(true){
+      const {data,error}=await sb.from('inventory_po').select('*').range(from,from+PAGE-1);
+      if(error){
+        // Table may not exist yet on older deployments — log and continue
+        console.warn('inventory_po load skipped:',error.message);
+        break;
+      }
+      if(!data||!data.length)break;
+      data.forEach(r=>{
+        const code=(r.item_code||'').toUpperCase().trim();
+        if(!code)return;
+        const arr=inventoryPoMap.get(code)||[];
+        arr.push({
+          so_number:r.so_number?String(r.so_number).toUpperCase().trim():null,
+          qty_on_order:Number(r.qty_on_order)||0,
+          earliest_eta:r.earliest_eta||null
+        });
+        inventoryPoMap.set(code,arr);
+      });
       if(data.length<PAGE)break;
       from+=PAGE;
     }
@@ -3340,7 +3377,7 @@ async function loadInventoryAndSO(){
       if(data.length<PAGE)break;
       from+=PAGE;
     }
-    console.log('Loaded inventory:',inventoryMap.size,'· SOs:',soMetaMap.size);
+    console.log('Loaded inventory:',inventoryMap.size,'items · PO rows for',inventoryPoMap.size,'items · SOs:',soMetaMap.size);
   }catch(err){
     console.warn('Inventory/SO load error:',err);
   }
@@ -3464,23 +3501,64 @@ async function handleInventoryFile(event){
       showToast('Cannot find item code or qty column. Headers found: '+Object.keys(sample).join(', '),'red');
       return;
     }
-    // Build records
-    const records=[];
+    // ── Parser strategy ─────────────────────────────────────────────────────
+    // Each Excel row may be:
+    //   • aggregated row for an item    → goes to `inventory` (qty_on_hand)
+    //   • a PO row tied to a specific SO  → goes to `inventory_po` (so_number=X)
+    //   • a PO row not tied to an SO      → goes to `inventory_po` (so_number=NULL)
+    // The same item_code can appear in MANY rows (different POs / SOs).
+    // We dedupe inventory (one row per item, take max qty_on_hand seen) and
+    // we keep ALL distinct PO rows for the PO table.
+    const parseSoFromSpecial=raw=>{
+      if(raw===null||raw===undefined)return null;
+      let s=String(raw).trim();
+      if(!s)return null;
+      // Strip trailing "/NAME" or "/anything" — keep only the prefix
+      s=s.split('/')[0].trim().toUpperCase();
+      // Must look like an SO: 5-8 digits only. Anything else (e.g. "P00690",
+      // free-form codes) is treated as unallocated → null.
+      if(/^\d{5,8}$/.test(s))return s;
+      return null;
+    };
+    const invByCode=new Map();         // item_code → {item_code, qty_on_hand, last_synced}
+    const poRows=[];                   // each: {item_code, so_number, qty_on_order, earliest_eta, last_synced}
+    const nowIso=new Date().toISOString();
     for(const r of rows){
       const code=String(r[codeCol]||'').trim();
       if(!code)continue;
-      records.push({
-        item_code:code,
-        qty_on_hand:parseNumber(r[onHandCol]),
-        qty_on_order:onOrderCol?parseNumber(r[onOrderCol]):0,
-        earliest_eta:etaCol?parseExcelDate(r[etaCol]):null,
-        special_order_so:specialCol?(String(r[specialCol]||'').trim()||null):null,
-        last_synced:new Date().toISOString()
-      });
+      const oh=parseNumber(r[onHandCol]);
+      const oo=onOrderCol?parseNumber(r[onOrderCol]):0;
+      const eta=etaCol?parseExcelDate(r[etaCol]):null;
+      const spec=specialCol?String(r[specialCol]||'').trim():'';
+      const soNum=parseSoFromSpecial(spec);
+      // (1) Inventory: dedupe; on_hand is per-item, Power BI repeats it on each PO row
+      const existing=invByCode.get(code);
+      if(!existing){
+        invByCode.set(code,{item_code:code,qty_on_hand:oh,last_synced:nowIso});
+      } else if(oh>existing.qty_on_hand){
+        existing.qty_on_hand=oh;
+      }
+      // (2) PO row: only record if there's an actual PO qty OR ETA
+      if(oo>0||eta){
+        poRows.push({
+          item_code:code,
+          so_number:soNum,
+          qty_on_order:oo||0,
+          earliest_eta:eta||null,
+          last_synced:nowIso
+        });
+      }
     }
+    const records=Array.from(invByCode.values());
     if(!records.length){showToast('No valid rows found','red');return;}
+    const dupCount=rows.length-records.length;
+    // Stash PO rows for the commit step
+    window._pendingInventoryPo=poRows;
+    if(dupCount>0){
+      console.log('Inventory dedup: '+rows.length+' raw → '+records.length+' unique items, '+poRows.length+' PO rows tracked');
+    }
     // Show preview
-    showInventoryPreview(records,{codeCol,onHandCol,onOrderCol,etaCol,specialCol});
+    showInventoryPreview(records,{codeCol,onHandCol,onOrderCol,etaCol,specialCol,dupCount,poCount:poRows.length});
   }catch(err){
     console.error('Inventory parse error:',err);
     showToast('Failed to parse: '+(err.message||''),'red');
@@ -3492,28 +3570,27 @@ function showInventoryPreview(records,cols){
   const sample=records.slice(0,5).map(r=>`<tr>
     <td style="padding:6px 10px;">${r.item_code}</td>
     <td style="padding:6px 10px;text-align:right;">${r.qty_on_hand}</td>
-    <td style="padding:6px 10px;text-align:right;">${r.qty_on_order||0}</td>
-    <td style="padding:6px 10px;">${r.earliest_eta||'—'}</td>
-    <td style="padding:6px 10px;">${r.special_order_so||'—'}</td>
   </tr>`).join('');
   window._pendingInventory=records;
+  const infoNote=`<div style="font-size:12px;color:var(--blue-dk);margin-bottom:8px;">📊 ${records.length} unique items (stock) · ${cols.poCount||0} PO rows tracked${cols.dupCount>0?' · '+cols.dupCount+' duplicate inventory rows merged':''}.</div>`;
   preview.style.display='block';
   preview.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--bdr3);border-radius:var(--r-md);padding:10px 14px;margin-top:8px;">
-      <div style="font-size:13px;color:var(--txt1);margin-bottom:8px;">📋 <strong>${records.length} rows</strong> ready to import. Detected columns:
+      <div style="font-size:13px;color:var(--txt1);margin-bottom:8px;">📋 Ready to import. Detected columns:
         <span style="color:var(--blue);">${cols.codeCol}</span> → item_code,
         <span style="color:var(--blue);">${cols.onHandCol}</span> → on_hand
         ${cols.onOrderCol?', <span style="color:var(--blue);">'+cols.onOrderCol+'</span> → on_order':''}
         ${cols.etaCol?', <span style="color:var(--blue);">'+cols.etaCol+'</span> → eta':''}
-        ${cols.specialCol?', <span style="color:var(--blue);">'+cols.specialCol+'</span> → special_order_so':''}
+        ${cols.specialCol?', <span style="color:var(--blue);">'+cols.specialCol+'</span> → so_number (SO-pattern only)':''}
       </div>
-      <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Preview (first 5):</div>
+      ${infoNote}
+      <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Stock preview (first 5):</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg1);border-radius:6px;overflow:hidden;">
-        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">Item</th><th style="padding:6px 10px;text-align:right;">On Hand</th><th style="padding:6px 10px;text-align:right;">On Order</th><th style="padding:6px 10px;text-align:left;">ETA</th><th style="padding:6px 10px;text-align:left;">Special Order</th></tr></thead>
+        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">Item</th><th style="padding:6px 10px;text-align:right;">On Hand</th></tr></thead>
         <tbody>${sample}</tbody>
       </table>
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <button onclick="commitInventory()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:500;">✓ Save All ${records.length}</button>
+        <button onclick="commitInventory()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:500;">✓ Save ${records.length} items + ${cols.poCount||0} POs</button>
         <button onclick="document.getElementById('inventoryPreview').style.display='none'" style="padding:8px 16px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-size:13px;">Cancel</button>
       </div>
     </div>`;
@@ -3521,11 +3598,12 @@ function showInventoryPreview(records,cols){
 
 async function commitInventory(){
   const records=window._pendingInventory||[];
+  const poRows=window._pendingInventoryPo||[];
   if(!records.length)return;
   setSyncDot('syncing');
-  showToast('Saving '+records.length+' rows...');
+  showToast('Saving '+records.length+' items + '+poRows.length+' POs...');
   try{
-    // Upsert in batches of 500
+    // ── Step 1: Upsert inventory (on-hand stock per item) ───────────────────
     const batchSize=500;
     let saved=0;
     for(let i=0;i<records.length;i+=batchSize){
@@ -3534,14 +3612,29 @@ async function commitInventory(){
       if(error)throw error;
       saved+=batch.length;
     }
+    // ── Step 2: Replace inventory_po wholesale ──────────────────────────────
+    // PO data is a snapshot: every weekly upload is the new truth. The
+    // cleanest model is full replace. Wipe first, then insert in batches.
+    {
+      const {error:delErr}=await sb.from('inventory_po').delete().not('id','is',null);
+      if(delErr)throw delErr;
+    }
+    let savedPo=0;
+    for(let i=0;i<poRows.length;i+=batchSize){
+      const batch=poRows.slice(i,i+batchSize);
+      const {error}=await sb.from('inventory_po').insert(batch);
+      if(error)throw error;
+      savedPo+=batch.length;
+    }
     await loadInventoryAndSO();
     document.getElementById('inventoryPreview').style.display='none';
-    document.getElementById('inventoryStatus').textContent='✓ '+saved+' inventory rows synced at '+new Date().toLocaleTimeString();
-    showToast('✅ Saved '+saved+' inventory rows','green');
+    document.getElementById('inventoryStatus').textContent='✓ '+saved+' items + '+savedPo+' POs synced at '+new Date().toLocaleTimeString();
+    showToast('✅ Saved '+saved+' items + '+savedPo+' POs','green');
     setSyncDot('ok');
     // Refresh visible job cards to show new inventory
     if(document.getElementById('page-worker')?.classList.contains('active'))renderWorker();
     window._pendingInventory=null;
+    window._pendingInventoryPo=null;
   }catch(err){
     console.error('Inventory save error:',err);
     setSyncDot('error');
@@ -3861,18 +3954,72 @@ function lookupInventory(code){
   }
   if(matches.length===0)return null;
   if(matches.length===1)return {match:matches[0],exact:false,code:matches[0].code,fuzzy:true};
-  // Multiple matches — return aggregated stock summary
+  // Multiple matches — return aggregated stock summary (on-hand only here;
+  // PO data is queried separately via lookupInventoryPo).
   const total={
     code:key+'*',
     qty_on_hand:matches.reduce((a,r)=>a+(Number(r.qty_on_hand)||0),0),
-    qty_on_order:matches.reduce((a,r)=>a+(Number(r.qty_on_order)||0),0),
-    earliest_eta:null,
     variants:matches.length
   };
-  // Earliest ETA across matches
-  const etas=matches.map(r=>r.earliest_eta).filter(Boolean).map(d=>new Date(d).getTime()).filter(t=>!isNaN(t));
-  if(etas.length)total.earliest_eta=new Date(Math.min(...etas)).toISOString().slice(0,10);
-  return {match:total,exact:false,code:key+' (*)',fuzzy:true,multi:true};
+  return {match:total,exact:false,code:key+' (*)',fuzzy:true,multi:true,matches};
+}
+
+// Resolve the PO situation for a (material, lineSo) pair.
+// Returns: {qty, eta, source, otherSos}
+//   qty       — number, displayed as On PO
+//   eta       — ISO date string or null, displayed as ETA
+//   source    — 'allocated' | 'general' | 'none'
+//                 'allocated' means a PO row matches this line's SO directly
+//                 'general' means PO rows exist but none are tied to a SO
+//                 'none' means no PO data at all
+//   otherSos  — array of other SOs that have THIS material locked up
+//                 (only populated when source !== 'allocated')
+function lookupInventoryPo(code,lineSo){
+  if(!code)return {qty:0,eta:null,source:'none',otherSos:[]};
+  const key=String(code).toUpperCase().trim();
+  if(!key)return {qty:0,eta:null,source:'none',otherSos:[]};
+  // Collect all PO rows for this item — exact match plus any prefix variants
+  // (so a material noted as "TPM2404N70PI" also pulls "TPM2404N70PI-RD" POs).
+  const collected=[];
+  if(inventoryPoMap.has(key))collected.push(...inventoryPoMap.get(key));
+  for(const [k,arr] of inventoryPoMap){
+    if(k===key)continue;
+    if(k.startsWith(key+'-'))collected.push(...arr);
+  }
+  if(!collected.length)return {qty:0,eta:null,source:'none',otherSos:[]};
+  const wantSo=lineSo?String(lineSo).toUpperCase().trim():null;
+  // Bucket the PO rows
+  const mine=[];                     // POs allocated to my SO
+  const general=[];                  // POs not allocated to any SO
+  const othersBySo=new Map();        // SO → total qty (for "blocked by SO X" hint)
+  for(const p of collected){
+    if(!p.so_number){
+      general.push(p);
+    } else if(wantSo&&p.so_number===wantSo){
+      mine.push(p);
+    } else {
+      const cur=othersBySo.get(p.so_number)||0;
+      othersBySo.set(p.so_number,cur+(p.qty_on_order||0));
+    }
+  }
+  // Helper to sum qty + pick earliest ETA from a bucket
+  const summarize=arr=>{
+    const qty=arr.reduce((a,p)=>a+(Number(p.qty_on_order)||0),0);
+    const etas=arr.map(p=>p.earliest_eta).filter(Boolean).map(d=>new Date(d).getTime()).filter(t=>!isNaN(t));
+    const eta=etas.length?new Date(Math.min(...etas)).toISOString().slice(0,10):null;
+    return {qty,eta};
+  };
+  if(mine.length){
+    const s=summarize(mine);
+    return {qty:s.qty,eta:s.eta,source:'allocated',otherSos:[]};
+  }
+  if(general.length){
+    const s=summarize(general);
+    const otherSos=Array.from(othersBySo.keys());
+    return {qty:s.qty,eta:s.eta,source:'general',otherSos};
+  }
+  // Only allocated-to-others POs exist → nothing for me
+  return {qty:0,eta:null,source:'none',otherSos:Array.from(othersBySo.keys())};
 }
 
 // Lookup inventory + SO ship date for a job context
