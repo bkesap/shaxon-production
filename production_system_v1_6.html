@@ -3253,16 +3253,55 @@ function normalizeHeader(h){
   return String(h||'').toLowerCase().replace(/sum of /g,'').replace(/_/g,' ').replace(/\s+/g,' ').trim();
 }
 
-// Best-effort fuzzy match: find a key in row whose header matches any of candidates
+// Best-effort fuzzy match: find a key in row whose header matches any of candidates.
+// Match strategy (strict → loose), candidate-by-candidate:
+//   1. Exact normalized match (case-insensitive, punctuation-tolerant)
+//   2. Whole-word match — candidate appears as a complete token in the header
+//      (so 'so' matches 'so number' but NOT 'salesperson name', because the
+//      header tokens are ['salesperson','name'] not ['so','...'])
+//   3. Containment fallback — last resort, only when candidate is ≥4 chars
+//      (avoids 'so' / 'rep' wildly matching everything).
+// Punctuation-tolerant: dots, dashes, slashes, etc. are treated as separators
+// so "Sales Order No." tokenizes to ['sales','order','no'].
 function findCol(row,candidates){
+  const tokenize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean);
   const norm={};
-  for(const k of Object.keys(row))norm[normalizeHeader(k)]=k;
+  const tokens={};
+  for(const k of Object.keys(row)){
+    const n=normalizeHeader(k);
+    norm[n]=k;
+    tokens[n]=tokenize(k);
+  }
+  // Pass 1: exact normalized match.
   for(const c of candidates){
     const cn=normalizeHeader(c);
     if(norm[cn]!==undefined)return norm[cn];
-    // partial: any key contains candidate
+  }
+  // Pass 2: whole-word match.
+  for(const c of candidates){
+    const ctoks=tokenize(c);
+    if(!ctoks.length)continue;
     for(const nk of Object.keys(norm)){
-      if(nk.includes(cn)||cn.includes(nk))return norm[nk];
+      const htoks=tokens[nk];
+      // candidate tokens must appear as a contiguous run inside header tokens
+      const n=htoks.length, m=ctoks.length;
+      if(m>n)continue;
+      for(let i=0;i<=n-m;i++){
+        let ok=true;
+        for(let j=0;j<m;j++){
+          if(htoks[i+j]!==ctoks[j]){ok=false;break;}
+        }
+        if(ok)return norm[nk];
+      }
+    }
+  }
+  // Pass 3: containment fallback for longer candidates (≥4 chars), no short-keyword
+  // false matches (e.g. 'so' inside 'salesperson').
+  for(const c of candidates){
+    const cn=normalizeHeader(c);
+    if(cn.length<4)continue;
+    for(const nk of Object.keys(norm)){
+      if(nk.includes(cn))return norm[nk];
     }
   }
   return null;
@@ -3433,11 +3472,11 @@ async function handleSOFile(event){
     const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
     if(!rows.length){showToast('Empty file','red');return;}
     const sample=rows[0];
-    const soCol=findCol(sample,['so number','so','sales order','sales order no','order number','order no']);
-    const shipCol=findCol(sample,['ship date','requested ship date','shipment date','ship by','due date']);
-    const custCol=findCol(sample,['customer','customer name','customer no']);
+    const soCol=findCol(sample,['sales order no','sales order','so number','so no','order number','order no','so']);
+    const shipCol=findCol(sample,['ship date','requested ship date','shipment date','ship by','due date','shipment']);
+    const custCol=findCol(sample,['sell to customer no','customer name','customer no','customer']);
     const prioCol=findCol(sample,['priority','prio']);
-    const salesCol=findCol(sample,['sales person','salesperson','sales rep','sales representative','sales','rep','account manager']);
+    const salesCol=findCol(sample,['salesperson name','sales person','salesperson','sales rep','sales representative','account manager']);
     if(!soCol||!shipCol){
       showToast('Cannot find SO or Ship Date column. Headers: '+Object.keys(sample).join(', '),'red');
       return;
@@ -3609,7 +3648,7 @@ async function handleCloseFile(event){
     const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
     if(!rows.length){showToast('Empty file','red');return;}
     const sample=rows[0];
-    const soCol=findCol(sample,['so number','so','sales order','sales order no','order number','order no','document no']);
+    const soCol=findCol(sample,['sales order no','sales order','so number','so no','document no','order number','order no','so']);
     if(!soCol){
       showToast('Cannot find SO column. Headers: '+Object.keys(sample).join(', '),'red');
       return;
