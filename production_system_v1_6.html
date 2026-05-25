@@ -2617,9 +2617,31 @@ function computeMaterialStatusSo(po,inv){
   return {level:'short',color:'#c62828',bg:'#FFEBEE',icon:'🔴',label:'No stock'};
 }
 
+// Parse a YYYY-MM-DD style date string as LOCAL midnight, not UTC midnight.
+// new Date('2026-05-20') silently treats the string as UTC, which shifts the
+// display by the local timezone offset (e.g. Vietnam UTC+7 turns May 20 into
+// May 19). Splitting and using the year/month/day constructor keeps it local.
+function parseLocalDate(s){
+  if(!s)return null;
+  // Already a Date? return as-is
+  if(s instanceof Date)return isNaN(s)?null:s;
+  const str=String(s).trim();
+  if(!str)return null;
+  const m=str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m){
+    const y=Number(m[1]),mo=Number(m[2])-1,d=Number(m[3]);
+    const dt=new Date(y,mo,d);
+    return isNaN(dt)?null:dt;
+  }
+  // Fallback for any other format
+  const dt=new Date(str);
+  return isNaN(dt)?null:dt;
+}
+
 function computeShipStatus(ship){
   if(!ship||!ship.ship_date)return {level:'unknown',color:'var(--txt3)',bg:'var(--bg2)',icon:'—',label:'no date'};
-  const sd=new Date(ship.ship_date);
+  const sd=parseLocalDate(ship.ship_date);
+  if(!sd)return {level:'unknown',color:'var(--txt3)',bg:'var(--bg2)',icon:'—',label:'no date'};
   const today=new Date();today.setHours(0,0,0,0);
   const days=Math.ceil((sd-today)/(1000*60*60*24));
   let color='var(--blue)',bg='var(--blue-lt)',icon='📅',level='normal';
@@ -2772,8 +2794,10 @@ function renderSchedule(){
         onOrderCell='<span style="color:var(--txt3);">0</span>';
       }
       if(it.po.eta){
-        const ed=new Date(it.po.eta);
-        etaCell=`<span style="font-size:12px;">${ed.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</span>`;
+        const ed=parseLocalDate(it.po.eta);
+        if(ed){
+          etaCell=`<span style="font-size:12px;">${ed.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</span>`;
+        }
       }
       const ms=it.matStatus;
       statusCell=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;background:${ms.bg};color:${ms.color};white-space:nowrap;font-weight:500;">${ms.icon} ${ms.label}</span>`;
@@ -3650,8 +3674,8 @@ async function handleInventoryFile(event){
     const sample=rows[0];
     const codeCol=findCol(sample,['description 2','item code','item','item no','description_2']);
     const onHandCol=findCol(sample,['qty avail','qty on hand','on hand','available','sum of qty avail']);
-    const onOrderCol=findCol(sample,['qty on purch order','on order','on po','sum of qty on purch order','qty on purchase order']);
-    const etaCol=findCol(sample,['earliest expected receipt','eta','expected receipt','earliest_expected_receipt','receipt date']);
+    const onOrderCol=findCol(sample,['outstanding qty base','sum of outstanding qty base','outstanding qty','qty on purch order','sum of qty on purch order','qty on purchase order','on order','on po']);
+    const etaCol=findCol(sample,['planned receipt date','earliest expected receipt','expected receipt','earliest_expected_receipt','receipt date','eta']);
     const specialCol=findCol(sample,['special order sales no','special order','special sales no','reserved for so','reserved so']);
     if(!codeCol||!onHandCol){
       showToast('Cannot find item code or qty column. Headers found: '+Object.keys(sample).join(', '),'red');
