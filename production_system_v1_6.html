@@ -636,10 +636,19 @@ body{font-family:var(--font);background:var(--bg2);}
         <option value="age">Sort: Oldest first</option>
         <option value="risk">Sort: Highest risk</option>
       </select>
+      <button id="schedFilterToggle" onclick="toggleSchedFilters()" style="padding:6px 12px;font-size:13px;background:var(--bg1);color:var(--txt1);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-family:var(--font);">🔍 Filters <span id="schedFilterBadge" style="display:none;background:var(--blue);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;">0</span></button>
       <div style="flex:1;"></div>
       <div id="schedSummary" style="font-size:12px;color:var(--txt2);"></div>
     </div>
     <div style="flex:1;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;">
+      <div id="schedFilterPanel" class="sched-filter-panel" style="display:none;">
+        <label>Material<input type="text" id="filterMaterial" oninput="renderSchedule()" placeholder="e.g. UL625P" style="width:160px;"/></label>
+        <label>Sales Person<select id="filterSalesPerson" onchange="renderSchedule()" style="width:160px;"><option value="">All</option></select></label>
+        <label>Ship date from<input type="date" id="filterShipFrom" onchange="renderSchedule()"/></label>
+        <label>Ship date to<input type="date" id="filterShipTo" onchange="renderSchedule()"/></label>
+        <label>PO match<select id="filterPoMatch" onchange="renderSchedule()" style="width:140px;"><option value="">All</option><option value="has">Has PO match</option><option value="no">No PO match</option></select></label>
+        <button class="sched-filter-clear" onclick="clearSchedFilters()">Clear all</button>
+      </div>
       <div id="schedBody" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
     </div>
   </div>
@@ -881,6 +890,16 @@ body{font-family:var(--font);background:var(--bg2);}
 .col-resizer:hover,.col-resizer.dragging{background:var(--blue-m);}
 .sched-table tr.sched-row:hover{background:var(--bg2);}
 .sched-scroll{overflow:auto;}
+.sched-note-input{width:100%;min-height:28px;max-height:60px;padding:5px 7px;font-size:12px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--txt1);resize:none;font-family:inherit;line-height:1.4;}
+.sched-note-input:hover{border-color:var(--bdr2);background:var(--bg1);}
+.sched-note-input:focus{outline:none;border-color:var(--blue);background:var(--bg1);box-shadow:0 0 0 2px rgba(55,138,221,.15);max-height:120px;}
+.sched-note-input.saving{border-color:var(--amber);}
+.sched-note-input.saved{border-color:var(--green);}
+.sched-filter-panel{display:flex;flex-wrap:wrap;gap:10px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bdr3);border-radius:var(--r-md);margin-bottom:10px;align-items:center;}
+.sched-filter-panel label{font-size:11px;color:var(--txt3);text-transform:uppercase;font-weight:500;display:flex;flex-direction:column;gap:3px;}
+.sched-filter-panel input,.sched-filter-panel select{padding:5px 8px;font-size:12px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);font-family:inherit;}
+.sched-filter-clear{background:var(--bg1);color:var(--red);border:1px solid var(--bdr2);padding:5px 10px;font-size:11px;border-radius:var(--r-md);cursor:pointer;font-weight:500;align-self:flex-end;}
+.sched-filter-clear:hover{background:var(--red-lt);}
 </style>
 
 <div class="toast" id="toast"></div>
@@ -1208,7 +1227,15 @@ function showPage(p,el){
   if(p==='admin')renderAdmin();
   if(p==='completed')renderDonePanel();
   if(p==='daily')renderDaily();
-  if(p==='schedule')renderSchedule();
+  if(p==='schedule'){
+    // Restore filter panel open/closed state from previous session
+    try{
+      const open=localStorage.getItem('shaxon_sched_filters_open')==='1';
+      const panel=document.getElementById('schedFilterPanel');
+      if(panel)panel.style.display=open?'flex':'none';
+    }catch(_){}
+    renderSchedule();
+  }
   if(p==='chat'){
     if(!deviceName)ensureDeviceName();
     renderChatMessages();
@@ -1558,6 +1585,24 @@ function setupRealtime(){
   sb.channel('shaxon-prod-v21')
     .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>scheduleLoadAll())
     .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>scheduleLoadAll())
+    .on('postgres_changes',{event:'*',schema:'public',table:'schedule_notes'},(payload)=>{
+      // Merge the change into the local map and re-render Schedule only if
+      // it's the currently active page and no note input is being typed in.
+      try{
+        const ev=payload.eventType||payload.event;
+        const row=payload.new||payload.old;
+        if(!row||!row.line_id)return;
+        if(ev==='DELETE'){
+          scheduleNotesMap.delete(row.line_id);
+        } else {
+          scheduleNotesMap.set(row.line_id,{note:row.note||'',updated_at:row.updated_at||null});
+        }
+        // Skip the re-render if a textarea is focused (we'd clobber the user's typing)
+        const active=document.activeElement;
+        if(active&&active.classList&&active.classList.contains('sched-note-input'))return;
+        if(document.getElementById('page-schedule')?.classList.contains('active'))renderSchedule();
+      }catch(e){console.warn('schedule_notes realtime handler error:',e);}
+    })
     .subscribe();
 }
 
@@ -2632,6 +2677,49 @@ function renderSchedule(){
   else if(filter==='po')filtered=filtered.filter(it=>it.matStatus.level==='po');
   else if(filter==='late')filtered=filtered.filter(it=>it.shipStatus.level==='late'||it.shipStatus.level==='urgent'||it.shipStatus.level==='soon');
 
+  // ── Advanced filters (panel) ─────────────────────────────────────────────
+  // Read each input. Empty input = "no constraint", so we skip filtering on it.
+  // Material is case-insensitive substring; ship dates are inclusive bounds;
+  // PO match toggles "has any po" vs "has no po"; Sales Person is exact match.
+  const fMaterial=(document.getElementById('filterMaterial')?.value||'').trim().toUpperCase();
+  const fSales=(document.getElementById('filterSalesPerson')?.value||'').trim();
+  const fShipFrom=(document.getElementById('filterShipFrom')?.value||'').trim();
+  const fShipTo=(document.getElementById('filterShipTo')?.value||'').trim();
+  const fPoMatch=(document.getElementById('filterPoMatch')?.value||'').trim();
+  if(fMaterial)filtered=filtered.filter(it=>(it.po&&it.po.material&&it.po.material.toUpperCase().includes(fMaterial)));
+  if(fSales)filtered=filtered.filter(it=>(it.ship&&String(it.ship.sales_person||'').trim()===fSales));
+  if(fShipFrom)filtered=filtered.filter(it=>(it.ship&&it.ship.ship_date&&it.ship.ship_date>=fShipFrom));
+  if(fShipTo)filtered=filtered.filter(it=>(it.ship&&it.ship.ship_date&&it.ship.ship_date<=fShipTo));
+  if(fPoMatch==='has')filtered=filtered.filter(it=>!!it.po);
+  else if(fPoMatch==='no')filtered=filtered.filter(it=>!it.po);
+
+  // Populate Sales Person dropdown from soMetaMap (one-time-ish per render).
+  // Preserve current selection across rebuilds.
+  const spSelect=document.getElementById('filterSalesPerson');
+  if(spSelect){
+    const current=spSelect.value;
+    const names=new Set();
+    for(const meta of soMetaMap.values()){
+      const n=String(meta.sales_person||'').trim();
+      if(n)names.add(n);
+    }
+    const sorted=Array.from(names).sort();
+    // Only rebuild if the option list changed (avoids breaking focus)
+    const existing=Array.from(spSelect.options).slice(1).map(o=>o.value);
+    if(existing.length!==sorted.length||existing.some((v,i)=>v!==sorted[i])){
+      spSelect.innerHTML='<option value="">All</option>'+sorted.map(n=>`<option value="${String(n).replace(/"/g,'&quot;')}">${n}</option>`).join('');
+      if(current&&sorted.includes(current))spSelect.value=current;
+    }
+  }
+
+  // Update filter badge (count of active advanced filters)
+  const activeCount=[fMaterial,fSales,fShipFrom,fShipTo,fPoMatch].filter(Boolean).length;
+  const badge=document.getElementById('schedFilterBadge');
+  if(badge){
+    if(activeCount>0){badge.style.display='';badge.textContent=String(activeCount);}
+    else{badge.style.display='none';}
+  }
+
   // Sort
   if(sortBy==='ship'){
     filtered.sort((a,b)=>{
@@ -2713,6 +2801,12 @@ function renderSchedule(){
       specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:var(--green-lt);color:#1b5e20;white-space:nowrap;font-weight:500;" title="PO allocated to this SO">${l.so}</span>`;
     }
 
+    // Notes cell — inline-editable textarea stored in schedule_notes table.
+    // onblur saves the value; on Enter (without Shift) the field also blurs.
+    const noteRaw=(scheduleNotesMap.get(l.id)||{}).note||'';
+    const noteEscaped=String(noteRaw).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const notesCell=`<textarea class="sched-note-input" data-line-id="${l.id}" placeholder="Add note..." onblur="saveScheduleNote(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.blur();}" rows="1">${noteEscaped}</textarea>`;
+
     let rowBg='';
     if(it.matStatus.level==='short'||ss.level==='late')rowBg='background:#FFF5F5;';
     else if(it.matStatus.level==='po'||ss.level==='urgent')rowBg='background:#FFFBEB;';
@@ -2729,7 +2823,8 @@ function renderSchedule(){
       eta:`<td>${etaCell}</td>`,
       status:`<td>${statusCell}</td>`,
       ship:`<td>${shipCell}</td>`,
-      salesperson:`<td>${salesCell}</td>`
+      salesperson:`<td>${salesCell}</td>`,
+      notes:`<td>${notesCell}</td>`
     }};
   });
 
@@ -2752,9 +2847,10 @@ function renderSchedule(){
     eta:        {label:'ETA',          align:'left',  width:90},
     status:     {label:'Status',       align:'left',  width:110},
     ship:       {label:'Ship Date',    align:'left',  width:130},
-    salesperson:{label:'Sales Person', align:'left',  width:120}
+    salesperson:{label:'Sales Person', align:'left',  width:120},
+    notes:      {label:'Notes',        align:'left',  width:200}
   };
-  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','status','ship','salesperson'];
+  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','status','ship','salesperson','notes'];
   let colOrder=[];
   try{
     const saved=JSON.parse(localStorage.getItem('shaxon_sched_col_order')||'null');
@@ -2804,6 +2900,64 @@ function renderSchedule(){
   setupColumnResizers();
   // Hook up drag-drop for column reordering
   setupColumnReorder();
+}
+
+// ── SCHEDULE FILTERS (collapsible panel) ───────────────────────────────────
+// Toggle visibility of the advanced filter panel and persist the state in
+// localStorage so the panel stays open between sessions if the user wants it.
+function toggleSchedFilters(){
+  const panel=document.getElementById('schedFilterPanel');
+  if(!panel)return;
+  const showing=panel.style.display!=='none';
+  panel.style.display=showing?'none':'flex';
+  try{localStorage.setItem('shaxon_sched_filters_open',showing?'0':'1');}catch(_){}
+}
+
+// Reset every advanced filter input back to empty and re-render.
+function clearSchedFilters(){
+  ['filterMaterial','filterSalesPerson','filterShipFrom','filterShipTo','filterPoMatch'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.value='';
+  });
+  renderSchedule();
+}
+
+// ── SCHEDULE NOTES (inline edit, synced to Supabase) ──────────────────────
+// Called on textarea blur (or Enter). Saves the note to schedule_notes via
+// upsert. If the line already has a note that matches the typed value, this
+// is a no-op (skipped). Updates the local map so the row stays in sync
+// without forcing a full re-render.
+async function saveScheduleNote(el){
+  const lineId=el.getAttribute('data-line-id');
+  if(!lineId)return;
+  const text=String(el.value||'').trim();
+  const prev=(scheduleNotesMap.get(lineId)||{}).note||'';
+  if(text===prev){
+    el.classList.remove('saving','saved');
+    return;
+  }
+  el.classList.add('saving');
+  el.classList.remove('saved');
+  try{
+    if(text===''){
+      // Empty input → delete the row so the table doesn't accumulate blanks
+      const {error}=await sb.from('schedule_notes').delete().eq('line_id',lineId);
+      if(error)throw error;
+      scheduleNotesMap.delete(lineId);
+    } else {
+      const payload={line_id:lineId,note:text,updated_at:new Date().toISOString()};
+      const {error}=await sb.from('schedule_notes').upsert(payload,{onConflict:'line_id'});
+      if(error)throw error;
+      scheduleNotesMap.set(lineId,{note:text,updated_at:payload.updated_at});
+    }
+    el.classList.remove('saving');
+    el.classList.add('saved');
+    setTimeout(()=>el.classList.remove('saved'),1000);
+  }catch(err){
+    console.error('Note save error:',err);
+    el.classList.remove('saving','saved');
+    showToast('Failed to save note: '+(err.message||''),'red');
+  }
 }
 
 // ── COLUMN RESIZE ───────────────────────────────────────────────────────────
@@ -3311,6 +3465,7 @@ function toggleAdminSection(key){
 let inventoryMap=new Map();    // item_code -> {qty_on_hand, last_synced}
 let inventoryPoMap=new Map();  // item_code -> [{so_number, qty_on_order, earliest_eta}, ...]
 let soMetaMap=new Map();       // so_number -> {ship_date, customer, priority, sales_person, last_synced}
+let scheduleNotesMap=new Map();// line_id -> {note, updated_at}
 
 async function loadInventoryAndSO(){
   try{
@@ -3362,7 +3517,23 @@ async function loadInventoryAndSO(){
       if(data.length<PAGE)break;
       from+=PAGE;
     }
-    console.log('Loaded inventory:',inventoryMap.size,'items · PO rows for',inventoryPoMap.size,'items · SOs:',soMetaMap.size);
+    // Schedule notes — paginate (one row per line)
+    scheduleNotesMap.clear();
+    from=0;
+    while(true){
+      const {data,error}=await sb.from('schedule_notes').select('*').range(from,from+PAGE-1);
+      if(error){
+        console.warn('schedule_notes load skipped:',error.message);
+        break;
+      }
+      if(!data||!data.length)break;
+      data.forEach(r=>{
+        if(r.line_id)scheduleNotesMap.set(r.line_id,{note:r.note||'',updated_at:r.updated_at||null});
+      });
+      if(data.length<PAGE)break;
+      from+=PAGE;
+    }
+    console.log('Loaded inventory:',inventoryMap.size,'items · PO rows for',inventoryPoMap.size,'items · SOs:',soMetaMap.size,'· notes:',scheduleNotesMap.size);
   }catch(err){
     console.warn('Inventory/SO load error:',err);
   }
