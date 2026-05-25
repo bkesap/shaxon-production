@@ -627,9 +627,8 @@ body{font-family:var(--font);background:var(--bg2);}
       <select id="schedFilter" onchange="renderSchedule()" style="padding:6px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);">
         <option value="all">All open jobs</option>
         <option value="short">🔴 No stock only</option>
-        <option value="po">🟡 PO only / Back order</option>
+        <option value="po">🟡 PO only</option>
         <option value="late">⏰ Late or due soon (≤7 days)</option>
-        <option value="hasnote">📝 With note only</option>
       </select>
       <select id="schedSort" onchange="renderSchedule()" style="padding:6px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);outline:none;font-family:var(--font);">
         <option value="ship">Sort: Ship date</option>
@@ -2562,6 +2561,17 @@ function computeMaterialStatus(parsed,inv,po){
   return {level:'short',color:'#c62828',bg:'#FFEBEE',icon:'🔴',label:'No stock'};
 }
 
+// Schedule-specific status: derived purely from po/inv, no note parsing.
+// Returns {level, color, bg, icon, label}.
+function computeMaterialStatusSo(po,inv){
+  if(!po)return {level:'no_material',color:'var(--txt3)',bg:'transparent',icon:'',label:''};
+  const onHand=inv?Number(inv.qty_on_hand)||0:0;
+  const onOrder=Number(po.qty)||0;
+  if(onHand>0)return {level:'ok',color:'#1b5e20',bg:'var(--green-lt)',icon:'✅',label:'In stock'};
+  if(onOrder>0)return {level:'po',color:'var(--amber-dk)',bg:'var(--amber-lt)',icon:'🟡',label:'PO only'};
+  return {level:'short',color:'#c62828',bg:'#FFEBEE',icon:'🔴',label:'No stock'};
+}
+
 function computeShipStatus(ship){
   if(!ship||!ship.ship_date)return {level:'unknown',color:'var(--txt3)',bg:'var(--bg2)',icon:'—',label:'no date'};
   const sd=new Date(ship.ship_date);
@@ -2595,28 +2605,23 @@ function renderSchedule(){
     if(!aliveSts.length)continue;
     aliveSts.sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
     const current=aliveSts[0];
-    // Find the note: usually on the latest alive station
-    const noteSrc=aliveSts.find(s=>s.note&&s.note.trim())||sts.find(s=>s.note&&s.note.trim());
-    const noteText=noteSrc?noteSrc.note:'';
-    // Parse note
-    const parsed=parseNote(noteText);
-    const invResult=parsed&&parsed.material?lookupInventory(parsed.material):null;
-    const inv=invResult?invResult.match:null;
-    const invFuzzy=invResult?invResult.fuzzy:false;
-    // PO resolution: respects the line's SO. Allocated PO wins over general POs.
-    const po=parsed&&parsed.material?lookupInventoryPo(parsed.material,line.so):{qty:0,eta:null,source:'none',otherSos:[]};
+    // SO-driven PO lookup: the only source of material/PO info. Worker notes
+    // are not used here. If inventory_po has a row whose so_number matches
+    // this line's SO, we pull the material code, qty, ETA from that row.
+    const po=lookupPoForSo(line.so);
+    // On-hand for the resolved material (if any)
+    const inv=po?(inventoryMap.get(String(po.material||'').toUpperCase().trim())||null):null;
     const ship=soMetaMap.get(String(line.so).toUpperCase());
-    const matStatus=computeMaterialStatus(parsed,inv,po);
+    const matStatus=computeMaterialStatusSo(po,inv);
     const shipStatus=computeShipStatus(ship);
     // Risk score: lower is safer
     let risk=0;
     if(matStatus.level==='short')risk+=100;
     else if(matStatus.level==='po')risk+=40;
-    else if(matStatus.level==='no_inv')risk+=20;
     if(shipStatus.level==='late')risk+=200;
     else if(shipStatus.level==='urgent')risk+=80;
     else if(shipStatus.level==='soon')risk+=30;
-    items.push({line,current,noteText,parsed,inv,po,ship,matStatus,shipStatus,risk});
+    items.push({line,current,po,inv,ship,matStatus,shipStatus,risk});
   }
 
   // Search filter
@@ -2626,7 +2631,6 @@ function renderSchedule(){
   if(filter==='short')filtered=filtered.filter(it=>it.matStatus.level==='short');
   else if(filter==='po')filtered=filtered.filter(it=>it.matStatus.level==='po');
   else if(filter==='late')filtered=filtered.filter(it=>it.shipStatus.level==='late'||it.shipStatus.level==='urgent'||it.shipStatus.level==='soon');
-  else if(filter==='hasnote')filtered=filtered.filter(it=>it.noteText&&it.noteText.trim());
 
   // Sort
   if(sortBy==='ship'){
@@ -2664,22 +2668,18 @@ function renderSchedule(){
     let etaCell='<span style="color:var(--txt3);">—</span>';
     let statusCell='<span style="color:var(--txt3);">—</span>';
 
-    if(it.parsed&&it.parsed.material){
-      const fuzzyHint=it.invFuzzy?`<span title="Approximate match across variants" style="color:var(--amber-dk);font-size:10px;font-weight:600;margin-left:2px;">~</span>`:'';
-      const multiHint=it.parsed.materials&&it.parsed.materials.length>1?`<span title="${it.parsed.materials.slice(1).join(', ')}" style="color:var(--blue);font-size:10px;margin-left:2px;">+${it.parsed.materials.length-1}</span>`:'';
-      matCode=`<span style="font-weight:600;color:var(--blue-dk);font-family:monospace;font-size:12px;">${it.parsed.material}${fuzzyHint}${multiHint}</span>`;
+    if(it.po){
+      // PO matched the line's SO → pull every cell from the resolved record.
+      matCode=`<span style="font-weight:600;color:var(--blue-dk);font-family:monospace;font-size:12px;">${it.po.material}</span>`;
       if(it.inv){
         const oh=Number(it.inv.qty_on_hand)||0;
         onHandCell=`<span style="font-weight:500;">${oh.toLocaleString()}</span>`;
       } else {
         onHandCell='<span style="color:var(--amber-dk);font-size:11px;">no data</span>';
       }
-      // On PO + ETA come from the PO resolver (respects line.so)
       const oo=Number(it.po.qty)||0;
       if(oo>0){
-        const hint=it.po.source==='allocated'?'Allocated to this SO':'General PO (not allocated to any SO)';
-        const fg=it.po.source==='allocated'?'#1b5e20':'var(--blue-dk)';
-        onOrderCell=`<span style="color:${fg};font-weight:500;" title="${hint}">${oo.toLocaleString()}</span>`;
+        onOrderCell=`<span style="color:#1b5e20;font-weight:500;" title="Allocated to this SO">${oo.toLocaleString()}</span>`;
       } else {
         onOrderCell='<span style="color:var(--txt3);">0</span>';
       }
@@ -2689,13 +2689,6 @@ function renderSchedule(){
       }
       const ms=it.matStatus;
       statusCell=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;background:${ms.bg};color:${ms.color};white-space:nowrap;font-weight:500;">${ms.icon} ${ms.label}</span>`;
-    } else if(it.parsed&&it.parsed.status!=='unknown'){
-      // No material code but a status keyword detected (e.g. "Part Already", "Back order")
-      const ms=it.matStatus;
-      matCode=`<span style="font-size:11px;color:var(--txt3);font-style:italic;">${it.noteText.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
-      statusCell=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;background:${ms.bg};color:${ms.color};white-space:nowrap;font-weight:500;">${ms.icon} ${ms.label}</span>`;
-    } else if(it.noteText){
-      matCode=`<span style="font-size:11px;color:var(--txt3);font-style:italic;">${it.noteText.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
 
     // Ship cell
@@ -2714,10 +2707,9 @@ function renderSchedule(){
       salesCell=`<span style="font-size:12px;">${String(it.ship.sales_person).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
 
-    // Special Order cell — only show when there's an actual PO match for THIS line.
-    // A PO row tied to a different SO is invisible to us, so the cell stays empty.
+    // Special Order cell — green pill when PO is allocated to this SO.
     let specialCell='<span style="color:var(--txt3);">—</span>';
-    if(it.po&&it.po.source==='allocated'){
+    if(it.po){
       specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:var(--green-lt);color:#1b5e20;white-space:nowrap;font-weight:500;" title="PO allocated to this SO">${l.so}</span>`;
     }
 
@@ -4007,6 +3999,27 @@ function lookupInventoryPo(code,lineSo){
     return {qty:s.qty,eta:s.eta,source:'general'};
   }
   return {qty:0,eta:null,source:'none'};
+}
+
+// SO-driven PO lookup: returns the PO record(s) tied to a given SO.
+// Used by the Schedule to answer "what material was ordered for this SO?"
+// without relying on worker notes. Returns null if no PO is tied to this SO.
+//   {material, qty, eta}
+// If multiple PO rows match the SO (rare — usually one material per SO), we
+// take the first one. Per user rule: "Bir SO için genelde tek bir PO
+// material'ı olur — tüm line'larda aynı görünsün".
+function lookupPoForSo(lineSo){
+  if(!lineSo)return null;
+  const want=String(lineSo).toUpperCase().trim();
+  if(!want)return null;
+  for(const [code,poList] of inventoryPoMap){
+    for(const po of poList){
+      if(po.so_number&&po.so_number===want){
+        return {material:code,qty:Number(po.qty_on_order)||0,eta:po.earliest_eta||null};
+      }
+    }
+  }
+  return null;
 }
 
 // Lookup inventory + SO ship date for a job context
