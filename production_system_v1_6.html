@@ -2650,7 +2650,7 @@ function renderSchedule(){
     return;
   }
 
-  const rows=filtered.map(it=>{
+  const rowsData=filtered.map(it=>{
     const l=it.line;
     const s=it.current;
     const teamPill=`<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:${s.state==='active'?'var(--green-lt)':s.state==='paused'?'var(--amber-lt)':s.state==='queue'?'#E8EAF6':'#F3E5F5'};color:${s.state==='active'?'#1b5e20':s.state==='paused'?'var(--amber-dk)':s.state==='queue'?'#283593':'#6a1b9a'};white-space:nowrap;">${shortGrp(s.grp)} · ${s.state}</span>`;
@@ -2706,60 +2706,92 @@ function renderSchedule(){
       salesCell=`<span style="font-size:12px;">${String(it.ship.sales_person).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
 
+    // Special Order cell — comes from the matched inventory row
+    let specialCell='<span style="color:var(--txt3);">—</span>';
+    if(it.inv&&it.inv.special_order_so){
+      const so=String(it.inv.special_order_so).trim();
+      const matchesCurrent=so.toUpperCase()===String(l.so||'').toUpperCase();
+      // Highlight when material is reserved for THIS SO (green); otherwise muted (this material is tied to another SO)
+      const bg=matchesCurrent?'var(--green-lt)':'#F3E5F5';
+      const fg=matchesCurrent?'#1b5e20':'#6a1b9a';
+      specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:${bg};color:${fg};white-space:nowrap;font-weight:500;" title="${matchesCurrent?'Reserved for this SO':'Reserved for SO '+so}">${so}</span>`;
+    }
+
     let rowBg='';
     if(it.matStatus.level==='short'||ss.level==='late')rowBg='background:#FFF5F5;';
     else if(it.matStatus.level==='po'||ss.level==='urgent')rowBg='background:#FFFBEB;';
 
-    return `<tr class="sched-row" style="${rowBg}">
-      <td style="font-weight:600;color:var(--blue);">${l.so}</td>
-      <td class="col-item" title="${l.item}">${l.item}</td>
-      <td style="font-weight:500;white-space:nowrap;">${l.qty}</td>
-      <td>${teamPill}</td>
-      <td>${matCode}</td>
-      <td style="text-align:right;">${onHandCell}</td>
-      <td style="text-align:right;">${onOrderCell}</td>
-      <td>${etaCell}</td>
-      <td>${statusCell}</td>
-      <td>${shipCell}</td>
-      <td>${salesCell}</td>
-    </tr>`;
-  }).join('');
+    return {rowBg,cells:{
+      so:`<td style="font-weight:600;color:var(--blue);">${l.so}</td>`,
+      item:`<td class="col-item" title="${l.item}">${l.item}</td>`,
+      qty:`<td style="font-weight:500;white-space:nowrap;">${l.qty}</td>`,
+      team:`<td>${teamPill}</td>`,
+      mat:`<td>${matCode}</td>`,
+      special:`<td>${specialCell}</td>`,
+      onhand:`<td style="text-align:right;">${onHandCell}</td>`,
+      onorder:`<td style="text-align:right;">${onOrderCell}</td>`,
+      eta:`<td>${etaCell}</td>`,
+      status:`<td>${statusCell}</td>`,
+      ship:`<td>${shipCell}</td>`,
+      salesperson:`<td>${salesCell}</td>`
+    }};
+  });
 
-  // Load saved column widths from localStorage
-  const defaultWidths={so:90,item:180,qty:70,team:120,mat:140,onhand:90,onorder:90,eta:90,status:110,salesperson:120,ship:130};
+  // Single source of truth for column layout. Each entry has:
+  //   key   — internal identifier (matches keys in row cells above)
+  //   label — column header text
+  //   align — header text alignment
+  //   width — default width in px
+  // User can reorder via drag-drop and resize via column-edge handles.
+  // The order is persisted to localStorage so it survives reloads.
+  const COL_DEFS={
+    so:         {label:'SO',           align:'left',  width:90},
+    item:       {label:'Item',         align:'left',  width:180},
+    qty:        {label:'Qty',          align:'left',  width:70},
+    team:       {label:'Current Step', align:'left',  width:120},
+    mat:        {label:'Material',     align:'left',  width:140},
+    special:    {label:'Special Order',align:'left',  width:110},
+    onhand:     {label:'On Hand',      align:'right', width:90},
+    onorder:    {label:'On PO',        align:'right', width:90},
+    eta:        {label:'ETA',          align:'left',  width:90},
+    status:     {label:'Status',       align:'left',  width:110},
+    ship:       {label:'Ship Date',    align:'left',  width:130},
+    salesperson:{label:'Sales Person', align:'left',  width:120}
+  };
+  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','status','ship','salesperson'];
+  let colOrder=[];
+  try{
+    const saved=JSON.parse(localStorage.getItem('shaxon_sched_col_order')||'null');
+    if(Array.isArray(saved)&&saved.length){
+      // Keep only known keys, in saved order
+      colOrder=saved.filter(k=>COL_DEFS[k]);
+      // Append any new keys that weren't in saved order (e.g. 'special' added later)
+      DEFAULT_ORDER.forEach(k=>{if(!colOrder.includes(k))colOrder.push(k);});
+    }
+  }catch(e){}
+  if(!colOrder.length)colOrder=DEFAULT_ORDER.slice();
+
+  // Load saved column widths
   let savedWidths={};
   try{savedWidths=JSON.parse(localStorage.getItem('shaxon_sched_cols')||'{}');}catch(e){}
-  const w=Object.assign({},defaultWidths,savedWidths);
+  const widthFor=k=>savedWidths[k]||COL_DEFS[k].width;
+
+  const colgroupHtml=colOrder.map(k=>`<col data-col="${k}" style="width:${widthFor(k)}px;">`).join('');
+  const theadHtml=colOrder.map(k=>{
+    const d=COL_DEFS[k];
+    const alignStyle=d.align==='right'?'text-align:right;':'';
+    return `<th draggable="true" data-col="${k}" style="${alignStyle}cursor:grab;user-select:none;">${d.label}<div class="col-resizer" data-col="${k}"></div></th>`;
+  }).join('');
+  const rows=rowsData.map(r=>{
+    const tds=colOrder.map(k=>r.cells[k]).join('');
+    return `<tr class="sched-row" style="${r.rowBg}">${tds}</tr>`;
+  }).join('');
 
   body.innerHTML=`
     <div class="sched-scroll" style="background:var(--bg1);border:1px solid var(--bdr3);border-radius:var(--r-md);flex:1;min-height:0;">
       <table class="sched-table">
-        <colgroup>
-          <col data-col="so" style="width:${w.so}px;">
-          <col data-col="item" style="width:${w.item}px;">
-          <col data-col="qty" style="width:${w.qty}px;">
-          <col data-col="team" style="width:${w.team}px;">
-          <col data-col="mat" style="width:${w.mat}px;">
-          <col data-col="onhand" style="width:${w.onhand}px;">
-          <col data-col="onorder" style="width:${w.onorder}px;">
-          <col data-col="eta" style="width:${w.eta}px;">
-          <col data-col="status" style="width:${w.status}px;">
-          <col data-col="ship" style="width:${w.ship}px;">
-          <col data-col="salesperson" style="width:${w.salesperson}px;">
-        </colgroup>
-        <thead><tr>
-          <th>SO<div class="col-resizer" data-col="so"></div></th>
-          <th>Item<div class="col-resizer" data-col="item"></div></th>
-          <th>Qty<div class="col-resizer" data-col="qty"></div></th>
-          <th>Current Step<div class="col-resizer" data-col="team"></div></th>
-          <th>Material<div class="col-resizer" data-col="mat"></div></th>
-          <th style="text-align:right;">On Hand<div class="col-resizer" data-col="onhand"></div></th>
-          <th style="text-align:right;">On PO<div class="col-resizer" data-col="onorder"></div></th>
-          <th>ETA<div class="col-resizer" data-col="eta"></div></th>
-          <th>Status<div class="col-resizer" data-col="status"></div></th>
-          <th>Ship Date<div class="col-resizer" data-col="ship"></div></th>
-          <th>Sales Person<div class="col-resizer" data-col="salesperson"></div></th>
-        </tr></thead>
+        <colgroup>${colgroupHtml}</colgroup>
+        <thead><tr>${theadHtml}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -2770,10 +2802,12 @@ function renderSchedule(){
       ✅ In stock = stock available ·
       ⏰ urgent = ship date ≤ 7 days or past
       <br>
-      <em>Material auto-parsed from worker notes. Compare with your BOM to judge sufficiency. Drag column borders to resize.</em>
+      <em>Material auto-parsed from worker notes. Drag column headers to reorder · drag column borders to resize · order is saved automatically.</em>
     </div>`;
   // Hook up column resizers
   setupColumnResizers();
+  // Hook up drag-drop for column reordering
+  setupColumnReorder();
 }
 
 // ── COLUMN RESIZE ───────────────────────────────────────────────────────────
@@ -2784,8 +2818,72 @@ function setupColumnResizers(){
   });
 }
 
+// ── COLUMN REORDER (drag-and-drop schedule headers) ────────────────────────
+// User can drag any column header onto another to swap positions. The new
+// order is persisted to localStorage under 'shaxon_sched_col_order' and used
+// on next render. Resize handle clicks are NOT consumed as drags because the
+// handle stops mousedown propagation in setupColumnResizers / startResize.
+function setupColumnReorder(){
+  const ths=document.querySelectorAll('.sched-table thead th[draggable="true"]');
+  let dragSrc=null;
+  ths.forEach(th=>{
+    th.addEventListener('dragstart',e=>{
+      // Ignore drags that originated on the resize handle
+      if(e.target&&e.target.classList&&e.target.classList.contains('col-resizer')){
+        e.preventDefault();
+        return;
+      }
+      dragSrc=th.getAttribute('data-col');
+      th.style.opacity='0.4';
+      if(e.dataTransfer){
+        e.dataTransfer.effectAllowed='move';
+        try{e.dataTransfer.setData('text/plain',dragSrc);}catch(_){}
+      }
+    });
+    th.addEventListener('dragend',()=>{
+      th.style.opacity='';
+      document.querySelectorAll('.sched-table thead th').forEach(x=>{
+        x.style.boxShadow='';
+      });
+      dragSrc=null;
+    });
+    th.addEventListener('dragover',e=>{
+      if(!dragSrc)return;
+      const tgt=th.getAttribute('data-col');
+      if(tgt===dragSrc)return;
+      e.preventDefault();
+      if(e.dataTransfer)e.dataTransfer.dropEffect='move';
+      th.style.boxShadow='inset 3px 0 0 var(--blue)';
+    });
+    th.addEventListener('dragleave',()=>{
+      th.style.boxShadow='';
+    });
+    th.addEventListener('drop',e=>{
+      e.preventDefault();
+      const tgt=th.getAttribute('data-col');
+      th.style.boxShadow='';
+      if(!dragSrc||tgt===dragSrc)return;
+      // Read current order, splice src out, insert before target
+      let order=[];
+      try{order=JSON.parse(localStorage.getItem('shaxon_sched_col_order')||'null')||[];}catch(_){}
+      if(!order.length){
+        // First reorder — derive current order from the DOM
+        order=Array.from(document.querySelectorAll('.sched-table thead th[draggable="true"]'))
+          .map(x=>x.getAttribute('data-col'));
+      }
+      const srcIdx=order.indexOf(dragSrc);
+      if(srcIdx>=0)order.splice(srcIdx,1);
+      const tgtIdx=order.indexOf(tgt);
+      order.splice(tgtIdx>=0?tgtIdx:order.length,0,dragSrc);
+      try{localStorage.setItem('shaxon_sched_col_order',JSON.stringify(order));}catch(_){}
+      renderSchedule();
+    });
+  });
+}
+
 function startResize(e){
   e.preventDefault();
+  e.stopPropagation();
   const rz=e.currentTarget;
   const col=rz.getAttribute('data-col');
   const table=rz.closest('table');
@@ -3032,7 +3130,7 @@ function renderAdmin(){
       <div class="admin-section-body">
         <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
           <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-            Upload Power BI export (CSV/Excel) with columns: <strong>Description_2</strong> (item code), <strong>Sum of Qty_Avail</strong> (on hand), <strong>Sum of Qty_on_Purch_Order</strong> (on order), <strong>Earliest_Expected_Receipt</strong> (ETA). System auto-matches column names.
+            Upload Power BI export (CSV/Excel) with columns: <strong>Description_2</strong> (item code), <strong>Sum of Qty_Avail</strong> (on hand), <strong>Sum of Qty_on_Purch_Order</strong> (on order), <strong>Earliest_Expected_Receipt</strong> (ETA), <strong>Special_Order_Sales_No</strong> (optional). System auto-matches column names.
           </div>
           <div id="inventoryStatus" style="font-size:12px;color:var(--txt3);"></div>
           <input type="file" id="inventoryFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleInventoryFile(event)"/>
@@ -3361,6 +3459,7 @@ async function handleInventoryFile(event){
     const onHandCol=findCol(sample,['qty avail','qty on hand','on hand','available','sum of qty avail']);
     const onOrderCol=findCol(sample,['qty on purch order','on order','on po','sum of qty on purch order','qty on purchase order']);
     const etaCol=findCol(sample,['earliest expected receipt','eta','expected receipt','earliest_expected_receipt','receipt date']);
+    const specialCol=findCol(sample,['special order sales no','special order','special sales no','reserved for so','reserved so']);
     if(!codeCol||!onHandCol){
       showToast('Cannot find item code or qty column. Headers found: '+Object.keys(sample).join(', '),'red');
       return;
@@ -3375,12 +3474,13 @@ async function handleInventoryFile(event){
         qty_on_hand:parseNumber(r[onHandCol]),
         qty_on_order:onOrderCol?parseNumber(r[onOrderCol]):0,
         earliest_eta:etaCol?parseExcelDate(r[etaCol]):null,
+        special_order_so:specialCol?(String(r[specialCol]||'').trim()||null):null,
         last_synced:new Date().toISOString()
       });
     }
     if(!records.length){showToast('No valid rows found','red');return;}
     // Show preview
-    showInventoryPreview(records,{codeCol,onHandCol,onOrderCol,etaCol});
+    showInventoryPreview(records,{codeCol,onHandCol,onOrderCol,etaCol,specialCol});
   }catch(err){
     console.error('Inventory parse error:',err);
     showToast('Failed to parse: '+(err.message||''),'red');
@@ -3394,6 +3494,7 @@ function showInventoryPreview(records,cols){
     <td style="padding:6px 10px;text-align:right;">${r.qty_on_hand}</td>
     <td style="padding:6px 10px;text-align:right;">${r.qty_on_order||0}</td>
     <td style="padding:6px 10px;">${r.earliest_eta||'—'}</td>
+    <td style="padding:6px 10px;">${r.special_order_so||'—'}</td>
   </tr>`).join('');
   window._pendingInventory=records;
   preview.style.display='block';
@@ -3404,10 +3505,11 @@ function showInventoryPreview(records,cols){
         <span style="color:var(--blue);">${cols.onHandCol}</span> → on_hand
         ${cols.onOrderCol?', <span style="color:var(--blue);">'+cols.onOrderCol+'</span> → on_order':''}
         ${cols.etaCol?', <span style="color:var(--blue);">'+cols.etaCol+'</span> → eta':''}
+        ${cols.specialCol?', <span style="color:var(--blue);">'+cols.specialCol+'</span> → special_order_so':''}
       </div>
       <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Preview (first 5):</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg1);border-radius:6px;overflow:hidden;">
-        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">Item</th><th style="padding:6px 10px;text-align:right;">On Hand</th><th style="padding:6px 10px;text-align:right;">On Order</th><th style="padding:6px 10px;text-align:left;">ETA</th></tr></thead>
+        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">Item</th><th style="padding:6px 10px;text-align:right;">On Hand</th><th style="padding:6px 10px;text-align:right;">On Order</th><th style="padding:6px 10px;text-align:left;">ETA</th><th style="padding:6px 10px;text-align:left;">Special Order</th></tr></thead>
         <tbody>${sample}</tbody>
       </table>
       <div style="display:flex;gap:8px;margin-top:10px;">
