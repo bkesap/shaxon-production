@@ -2714,18 +2714,11 @@ function renderSchedule(){
       salesCell=`<span style="font-size:12px;">${String(it.ship.sales_person).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
     }
 
-    // Special Order cell — derived from PO resolution
-    //   allocated → green pill with current SO
-    //   general  → if other SOs claim this material, show a muted "blocked by SO X" hint
-    //   none     → "—"
+    // Special Order cell — only show when there's an actual PO match for THIS line.
+    // A PO row tied to a different SO is invisible to us, so the cell stays empty.
     let specialCell='<span style="color:var(--txt3);">—</span>';
     if(it.po&&it.po.source==='allocated'){
       specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:var(--green-lt);color:#1b5e20;white-space:nowrap;font-weight:500;" title="PO allocated to this SO">${l.so}</span>`;
-    } else if(it.po&&it.po.otherSos&&it.po.otherSos.length){
-      const first=it.po.otherSos[0];
-      const more=it.po.otherSos.length>1?` +${it.po.otherSos.length-1}`:'';
-      const tooltip=it.po.otherSos.join(', ');
-      specialCell=`<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:#F3E5F5;color:#6a1b9a;white-space:nowrap;font-weight:500;" title="This material is also reserved for: ${tooltip}">${first}${more}</span>`;
     }
 
     let rowBg='';
@@ -3965,19 +3958,19 @@ function lookupInventory(code){
 }
 
 // Resolve the PO situation for a (material, lineSo) pair.
-// Returns: {qty, eta, source, otherSos}
-//   qty       — number, displayed as On PO
-//   eta       — ISO date string or null, displayed as ETA
-//   source    — 'allocated' | 'general' | 'none'
-//                 'allocated' means a PO row matches this line's SO directly
-//                 'general' means PO rows exist but none are tied to a SO
-//                 'none' means no PO data at all
-//   otherSos  — array of other SOs that have THIS material locked up
-//                 (only populated when source !== 'allocated')
+// Returns: {qty, eta, source}
+//   qty    — number, displayed as On PO
+//   eta    — ISO date string or null, displayed as ETA
+//   source — 'allocated' | 'general' | 'none'
+//             'allocated' = a PO row matches this line's SO directly → use it
+//             'general'   = PO rows exist with NO SO tied → free pool, use it
+//             'none'      = no usable PO for this line (either no PO at all,
+//                           or every PO is tied to a DIFFERENT SO and is therefore
+//                           not available to this line)
 function lookupInventoryPo(code,lineSo){
-  if(!code)return {qty:0,eta:null,source:'none',otherSos:[]};
+  if(!code)return {qty:0,eta:null,source:'none'};
   const key=String(code).toUpperCase().trim();
-  if(!key)return {qty:0,eta:null,source:'none',otherSos:[]};
+  if(!key)return {qty:0,eta:null,source:'none'};
   // Collect all PO rows for this item — exact match plus any prefix variants
   // (so a material noted as "TPM2404N70PI" also pulls "TPM2404N70PI-RD" POs).
   const collected=[];
@@ -3986,23 +3979,19 @@ function lookupInventoryPo(code,lineSo){
     if(k===key)continue;
     if(k.startsWith(key+'-'))collected.push(...arr);
   }
-  if(!collected.length)return {qty:0,eta:null,source:'none',otherSos:[]};
+  if(!collected.length)return {qty:0,eta:null,source:'none'};
   const wantSo=lineSo?String(lineSo).toUpperCase().trim():null;
-  // Bucket the PO rows
-  const mine=[];                     // POs allocated to my SO
-  const general=[];                  // POs not allocated to any SO
-  const othersBySo=new Map();        // SO → total qty (for "blocked by SO X" hint)
+  // Only two buckets are usable for this line:
+  //   mine    — PO rows whose so_number equals this line's SO
+  //   general — PO rows with no so_number (open pool)
+  // PO rows tied to a DIFFERENT SO are skipped entirely (locked away from us).
+  const mine=[];
+  const general=[];
   for(const p of collected){
-    if(!p.so_number){
-      general.push(p);
-    } else if(wantSo&&p.so_number===wantSo){
-      mine.push(p);
-    } else {
-      const cur=othersBySo.get(p.so_number)||0;
-      othersBySo.set(p.so_number,cur+(p.qty_on_order||0));
-    }
+    if(!p.so_number)general.push(p);
+    else if(wantSo&&p.so_number===wantSo)mine.push(p);
+    // else: tied to another SO → ignore
   }
-  // Helper to sum qty + pick earliest ETA from a bucket
   const summarize=arr=>{
     const qty=arr.reduce((a,p)=>a+(Number(p.qty_on_order)||0),0);
     const etas=arr.map(p=>p.earliest_eta).filter(Boolean).map(d=>new Date(d).getTime()).filter(t=>!isNaN(t));
@@ -4011,15 +4000,13 @@ function lookupInventoryPo(code,lineSo){
   };
   if(mine.length){
     const s=summarize(mine);
-    return {qty:s.qty,eta:s.eta,source:'allocated',otherSos:[]};
+    return {qty:s.qty,eta:s.eta,source:'allocated'};
   }
   if(general.length){
     const s=summarize(general);
-    const otherSos=Array.from(othersBySo.keys());
-    return {qty:s.qty,eta:s.eta,source:'general',otherSos};
+    return {qty:s.qty,eta:s.eta,source:'general'};
   }
-  // Only allocated-to-others POs exist → nothing for me
-  return {qty:0,eta:null,source:'none',otherSos:Array.from(othersBySo.keys())};
+  return {qty:0,eta:null,source:'none'};
 }
 
 // Lookup inventory + SO ship date for a job context
