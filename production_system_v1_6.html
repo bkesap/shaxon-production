@@ -1621,21 +1621,34 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'station_headcount'},(payload)=>{
       // Headcount edits propagate to all users. Skip re-render if user is
       // currently editing the count field (would clobber their typing).
+      // TEMP debug: log every step so we can diagnose realtime issues.
+      console.log('[REALTIME] station_headcount event:', payload?.eventType||payload?.event, payload?.new||payload?.old);
       try{
         const ev=payload.eventType||payload.event;
         const row=payload.new||payload.old;
-        if(!row||!row.team_name)return;
+        if(!row||!row.team_name){
+          console.log('[REALTIME] no team_name on payload, skipping');
+          return;
+        }
         if(ev==='DELETE'){
           stationHeadcountMap.delete(row.team_name);
         } else {
           stationHeadcountMap.set(row.team_name,{people_count:Number(row.people_count)||0,updated_at:row.updated_at||null});
+          console.log('[REALTIME] map updated:', row.team_name, '=', row.people_count);
         }
         const active=document.activeElement;
-        if(active&&active.classList&&active.classList.contains('flow-people-input'))return;
-        if(document.getElementById('page-flow')?.classList.contains('active'))renderProductionFlow();
-      }catch(e){console.warn('station_headcount realtime handler error:',e);}
+        if(active&&active.classList&&active.classList.contains('flow-people-input')){
+          console.log('[REALTIME] user typing in headcount input, skipping re-render');
+          return;
+        }
+        const flowActive=document.getElementById('page-flow')?.classList.contains('active');
+        console.log('[REALTIME] page-flow active?', flowActive);
+        if(flowActive)renderProductionFlow();
+      }catch(e){console.warn('[REALTIME] station_headcount handler error:',e);}
     })
-    .subscribe();
+    .subscribe((status)=>{
+      console.log('[REALTIME] subscription status:', status);
+    });
 }
 
 // ── TEAM CHANGE ───────────────────────────────────────────────────────────────
