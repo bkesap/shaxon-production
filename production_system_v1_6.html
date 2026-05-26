@@ -659,7 +659,7 @@ body{font-family:var(--font);background:var(--bg2);}
 <div class="page" id="page-flow">
   <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
     <div class="panel-hdr" style="padding:10px 16px;background:var(--bg1);display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--bdr3);">
-      <span class="panel-lbl">🔄 Production Flow / Luong san xuat</span>
+      <span class="panel-lbl">🔄 Production Flow</span>
       <div style="flex:1;"></div>
       <div id="flowSummary" style="font-size:12px;color:var(--txt2);"></div>
     </div>
@@ -1617,6 +1617,23 @@ function setupRealtime(){
         if(active&&active.classList&&active.classList.contains('sched-note-input'))return;
         if(document.getElementById('page-schedule')?.classList.contains('active'))renderSchedule();
       }catch(e){console.warn('schedule_notes realtime handler error:',e);}
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'station_headcount'},(payload)=>{
+      // Headcount edits propagate to all users. Skip re-render if user is
+      // currently editing the count field (would clobber their typing).
+      try{
+        const ev=payload.eventType||payload.event;
+        const row=payload.new||payload.old;
+        if(!row||!row.team_name)return;
+        if(ev==='DELETE'){
+          stationHeadcountMap.delete(row.team_name);
+        } else {
+          stationHeadcountMap.set(row.team_name,{people_count:Number(row.people_count)||0,updated_at:row.updated_at||null});
+        }
+        const active=document.activeElement;
+        if(active&&active.classList&&active.classList.contains('flow-people-input'))return;
+        if(document.getElementById('page-flow')?.classList.contains('active'))renderProductionFlow();
+      }catch(e){console.warn('station_headcount realtime handler error:',e);}
     })
     .subscribe();
 }
@@ -2966,20 +2983,19 @@ function renderProductionFlow(){
 
   // Stage layout — left-to-right reading order
   const STAGES=[
-    {name:'Gateway / Giri\u015f',     teams:['Cutting','Part Pull']},
-    {name:'Crimping / B\u00fcken',    teams:['C1','C2','C3','C4']},
-    {name:'Finish / Bitir',           teams:['Testing / Packing']}
+    {name:'Gateway',  teams:['Cutting','Part Pull']},
+    {name:'Crimping', teams:['C1','C2','C3','C4']},
+    {name:'Finish',   teams:['Testing / Packing']}
   ];
 
   // Aggregate per-team metrics from active line stations.
   // ALIVE = active|paused|waiting|queue. We count a line as "in" a station
-  // if it has an alive station there. People = distinct device_names with
-  // an ACTIVE (not queued) station here.
+  // if it has an alive station there.
+  // People count is manual (entered by admin) — read from stationHeadcountMap.
   const ALIVE=new Set(['active','paused','waiting','queue']);
-  const ACTIVE_FOR_PEOPLE=new Set(['active','paused']);
   const stats=new Map();
   for(const team of [].concat(...STAGES.map(s=>s.teams))){
-    stats.set(team,{team,lines:new Set(),qty:0,people:new Set(),activeStations:0,queuedStations:0});
+    stats.set(team,{team,lines:new Set(),qty:0,activeStations:0,queuedStations:0});
   }
   for(const line of lines){
     if(line.fully_done)continue;
@@ -2989,13 +3005,8 @@ function renderProductionFlow(){
       if(!stats.has(s.grp))continue;
       const st=stats.get(s.grp);
       st.lines.add(line.id);
-      // Sum qty once per (line, team) - if the same team has both queue + active for the same line, count once
-      // Easier: we'll add qty per unique line below
       if(s.state==='active'||s.state==='paused')st.activeStations++;
       else st.queuedStations++;
-      if(ACTIVE_FOR_PEOPLE.has(s.state)&&s.device_name){
-        st.people.add(String(s.device_name).trim());
-      }
     }
   }
   // Add qty per (line, team) — once per unique line
@@ -3011,15 +3022,15 @@ function renderProductionFlow(){
     }
   }
 
-  // Top summary: total active people / orders / qty
-  const totalPeople=new Set();
-  let totalOrders=0,totalQty=0;
+  // Top summary: total people (manual) / orders / qty
+  let totalPeople=0,totalOrders=0,totalQty=0;
   for(const s of stats.values()){
-    s.people.forEach(p=>totalPeople.add(p));
+    const hc=stationHeadcountMap.get(s.team);
+    totalPeople+=hc?(Number(hc.people_count)||0):0;
     totalOrders+=s.lines.size;
     totalQty+=s.qty;
   }
-  summary.innerHTML=`👤 <strong>${totalPeople.size}</strong> people active · 📋 <strong>${totalOrders}</strong> active station-orders · 📦 <strong>${totalQty.toLocaleString()}</strong> total pcs`;
+  summary.innerHTML=`👤 <strong>${totalPeople}</strong> people · 📋 <strong>${totalOrders}</strong> active station-orders · 📦 <strong>${totalQty.toLocaleString()}</strong> total pcs`;
 
   // Find max qty across stations for heatmap color intensity
   let maxQty=0;
@@ -3034,7 +3045,8 @@ function renderProductionFlow(){
       <div style="display:flex;gap:14px;flex-wrap:wrap;">`;
     for(const team of stage.teams){
       const st=stats.get(team);
-      const pCount=st.people.size;
+      const hc=stationHeadcountMap.get(team);
+      const pCount=hc?(Number(hc.people_count)||0):0;
       const oCount=st.lines.size;
       const qCount=st.qty;
       // Color intensity by qty ratio
@@ -3042,10 +3054,11 @@ function renderProductionFlow(){
       const intensity=Math.min(0.85,0.15+ratio*0.7);
       const accent=qCount===0?'var(--bdr3)':`rgba(55,138,221,${intensity.toFixed(2)})`;
       const bg=qCount===0?'var(--bg1)':`rgba(55,138,221,${(intensity*0.12).toFixed(3)})`;
+      const teamAttr=String(team).replace(/"/g,'&quot;');
       html+=`<div style="flex:1;min-width:200px;background:${bg};border:1px solid var(--bdr3);border-left:4px solid ${accent};border-radius:var(--r-md);padding:14px 16px;">
         <div style="font-size:14px;font-weight:600;color:var(--txt1);margin-bottom:10px;">${team}</div>
         <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
-          <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udc64 People</span><strong>${pCount}</strong></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="color:var(--txt3);">\ud83d\udc64 People</span><input type="number" min="0" class="flow-people-input" data-team="${teamAttr}" value="${pCount}" onblur="saveStationHeadcount(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="width:60px;text-align:right;padding:2px 6px;font-size:13px;font-weight:600;border:1px solid var(--bdr2);border-radius:4px;background:var(--bg1);color:var(--txt1);font-family:inherit;"/></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udccb Orders</span><strong>${oCount}</strong></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udce6 Qty</span><strong>${qCount.toLocaleString()}</strong></div>
           ${st.activeStations||st.queuedStations?`<div style="font-size:10px;color:var(--txt3);margin-top:4px;padding-top:6px;border-top:1px solid var(--bdr3);">${st.activeStations} active \u00b7 ${st.queuedStations} queued</div>`:''}
@@ -3060,6 +3073,34 @@ function renderProductionFlow(){
   }
   html+='</div>';
   body.innerHTML=html;
+}
+
+// Save a station's manual people count. Triggered on blur or Enter.
+// Upserts to station_headcount. Realtime fans the change out to other devices.
+async function saveStationHeadcount(el){
+  const team=el.getAttribute('data-team');
+  if(!team)return;
+  const count=Math.max(0,parseInt(el.value,10)||0);
+  const prev=(stationHeadcountMap.get(team)||{}).people_count||0;
+  if(count===prev){
+    el.style.borderColor='';
+    return;
+  }
+  el.style.borderColor='var(--amber)';
+  try{
+    const payload={team_name:team,people_count:count,updated_at:new Date().toISOString()};
+    const {error}=await sb.from('station_headcount').upsert(payload,{onConflict:'team_name'});
+    if(error)throw error;
+    stationHeadcountMap.set(team,{people_count:count,updated_at:payload.updated_at});
+    el.style.borderColor='var(--green)';
+    setTimeout(()=>{el.style.borderColor='';},1000);
+    // Update the summary line at the top (cheap full re-render is fine here)
+    renderProductionFlow();
+  }catch(err){
+    console.error('Headcount save error:',err);
+    el.style.borderColor='var(--red)';
+    showToast('Failed to save: '+(err.message||''),'red');
+  }
 }
 
 // ── SCHEDULE FILTERS (collapsible panel) ───────────────────────────────────
@@ -3626,6 +3667,7 @@ let inventoryMap=new Map();    // item_code -> {qty_on_hand, last_synced}
 let inventoryPoMap=new Map();  // item_code -> [{so_number, qty_on_order, earliest_eta}, ...]
 let soMetaMap=new Map();       // so_number -> {ship_date, customer, priority, sales_person, last_synced}
 let scheduleNotesMap=new Map();// line_id -> {note, updated_at}
+let stationHeadcountMap=new Map();// team_name -> {people_count, updated_at}
 
 async function loadInventoryAndSO(){
   try{
@@ -3693,7 +3735,19 @@ async function loadInventoryAndSO(){
       if(data.length<PAGE)break;
       from+=PAGE;
     }
-    console.log('Loaded inventory:',inventoryMap.size,'items · PO rows for',inventoryPoMap.size,'items · SOs:',soMetaMap.size,'· notes:',scheduleNotesMap.size);
+    // Station headcount — manually entered people count per team
+    stationHeadcountMap.clear();
+    {
+      const {data,error}=await sb.from('station_headcount').select('*');
+      if(error){
+        console.warn('station_headcount load skipped:',error.message);
+      } else if(data){
+        data.forEach(r=>{
+          if(r.team_name)stationHeadcountMap.set(r.team_name,{people_count:Number(r.people_count)||0,updated_at:r.updated_at||null});
+        });
+      }
+    }
+    console.log('Loaded inventory:',inventoryMap.size,'items · PO rows for',inventoryPoMap.size,'items · SOs:',soMetaMap.size,'· notes:',scheduleNotesMap.size,'· headcount:',stationHeadcountMap.size);
   }catch(err){
     console.warn('Inventory/SO load error:',err);
   }
