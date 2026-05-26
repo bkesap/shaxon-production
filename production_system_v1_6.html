@@ -2286,19 +2286,53 @@ function getLineStatus(line){
   return'Not Started';
 }
 
+// Detect "phantom" done stations created by bulk insert bugs.
+// A real DONE station has: client_op_id set (it came from an RPC call) AND
+// a parseable done_at timestamp that's reasonably close to its started_at.
+// Bug rows from the 2026-05-26 18:01 incident were inserted with:
+//   - client_op_id NULL  (raw INSERT, not via RPC)
+//   - done_at copied from unrelated rows (sometimes "11:00 AM" strings,
+//     sometimes timestamps that don't match started_at)
+// We treat such rows as phantoms — they don't count as evidence the line
+// finished a step, so they can't cause "stuck" recovery to fire.
+function isPhantomDone(station){
+  if(!station||station.state!=='done')return false;
+  // Real DONE rows from RPCs always have a client_op_id; bug rows are NULL.
+  if(!station.client_op_id)return true;
+  // done_at must be a parseable ISO timestamp. Bug rows sometimes had
+  // strings like "11:00 AM" with no date — those won't parse.
+  const da=station.done_at;
+  if(!da||typeof da!=='string')return true;
+  const t=Date.parse(da);
+  if(isNaN(t))return true;
+  // Real rows: done_at is at or after started_at. Bug rows had done_at
+  // copied from a future or unrelated event, breaking that relationship.
+  const st=station.started_at?Date.parse(station.started_at):NaN;
+  if(!isNaN(st)){
+    // Allow a small clock-skew tolerance (60s in either direction).
+    if(t < st - 60000)return true;
+    // If done_at is more than 7 days after started_at, that's almost certainly
+    // a stale value copied from elsewhere.
+    if(t > st + 7*24*60*60*1000)return true;
+  }
+  return false;
+}
+
 // A line is "stuck/ghost" when: not fully_done, has no active/paused/waiting/queue
-// station, but has at least one done station. The system has lost track of it.
+// station, but has at least one *real* (non-phantom) done station. The system
+// has lost track of it. Phantom done rows from past bulk-insert bugs are
+// excluded so they cannot trigger a recovery chain reaction.
 function isLineStuck(line){
   if(line.fully_done)return false;
   const hasAlive=line.stations.some(s=>['active','paused','waiting','queue'].includes(s.state));
   if(hasAlive)return false;
-  const hasDone=line.stations.some(s=>s.state==='done');
-  return hasDone;
+  const hasRealDone=line.stations.some(s=>s.state==='done'&&!isPhantomDone(s));
+  return hasRealDone;
 }
 
 function getStuckInfo(line){
-  // Returns the last done station — the "stuck point"
-  const dones=line.stations.filter(s=>s.state==='done');
+  // Returns the last *real* done station — the "stuck point". Skip phantoms.
+  const dones=line.stations.filter(s=>s.state==='done'&&!isPhantomDone(s));
   if(!dones.length)return null;
   // Sort by done_at desc (string compare works for 12h format only roughly,
   // so also fall back to started_at)
@@ -5263,7 +5297,20 @@ async function recoverStuck(lineId){
 async function recoverAllStuck(){
   const stuck=lines.filter(isLineStuck);
   if(!stuck.length){showToast('No stuck items');return;}
-  if(!confirm(`Recover ALL ${stuck.length} stuck item(s)?\n\nThey will all be sent back to the Queue tab.`))return;
+  // Stronger warning when many lines would be touched. The 2026-05-26 incident
+  // showed that a single bulk recover can produce hundreds of zombie rows if
+  // the underlying data is dirty; force the user to read and acknowledge.
+  let msg='';
+  if(stuck.length>20){
+    msg=`⚠️ HIGH IMPACT: Recover ${stuck.length} stuck items?\n\n`+
+        `This will create ${stuck.length} new queue rows.\n\n`+
+        `If you're unsure, recover them one-by-one instead.\n`+
+        `Type YES to confirm.`;
+    const ans=prompt(msg,'');
+    if(!ans||ans.trim().toUpperCase()!=='YES')return;
+  } else {
+    if(!confirm(`Recover ALL ${stuck.length} stuck item(s)?\n\nThey will all be sent back to the Queue tab.`))return;
+  }
   setSyncDot('syncing');
   let ok=0,fail=0;
   for(const line of stuck){
