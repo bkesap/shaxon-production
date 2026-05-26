@@ -437,12 +437,13 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="nav-brand-sub">Production</div>
     </div>
   </div>
-  <div class="nav-tab active" onclick="showPage('worker',this)">Worker <span class="vn">Cong nhan</span></div>
+  <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Nhom</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
-  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span><span class="queue-badge" id="completedBadge" style="background:var(--green);"></span></div>
+  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
   <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
   <div class="nav-tab" onclick="showPage('schedule',this)">📅 Schedule</div>
+  <div class="nav-tab" onclick="showPage('flow',this)">🔄 Production Flow</div>
   <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
   <div style="flex:1;"></div>
@@ -651,6 +652,18 @@ body{font-family:var(--font);background:var(--bg2);}
       </div>
       <div id="schedBody" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
     </div>
+  </div>
+</div>
+
+<!-- ══ PRODUCTION FLOW ══ -->
+<div class="page" id="page-flow">
+  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
+    <div class="panel-hdr" style="padding:10px 16px;background:var(--bg1);display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--bdr3);">
+      <span class="panel-lbl">🔄 Production Flow / Luong san xuat</span>
+      <div style="flex:1;"></div>
+      <div id="flowSummary" style="font-size:12px;color:var(--txt2);"></div>
+    </div>
+    <div id="flowBody" style="flex:1;overflow:auto;padding:20px;"></div>
   </div>
 </div>
 
@@ -1236,6 +1249,7 @@ function showPage(p,el){
     }catch(_){}
     renderSchedule();
   }
+  if(p==='flow')renderProductionFlow();
   if(p==='chat'){
     if(!deviceName)ensureDeviceName();
     renderChatMessages();
@@ -1297,6 +1311,7 @@ async function _loadAllImpl(){
     renderWorker();renderQueue();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
     if(document.getElementById('page-admin').classList.contains('active'))renderAdmin();
+    if(document.getElementById('page-flow')?.classList.contains('active'))renderProductionFlow();
   }catch(err){
     console.error(err);setSyncDot('error');
     showToast('Connection error / Loi ket noi','red');
@@ -2330,11 +2345,13 @@ function renderWorker(){
   document.getElementById('statDone').textContent=doneList.length;
   const times=doneList.map(d=>d.totalMs).filter(Boolean);
   document.getElementById('statAvg').textContent=times.length?formatMs(times.reduce((a,b)=>a+b,0)/times.length):'--';
-  // Update completed badge
+  // Update completed badge (element may be removed; guard for null)
   const cb=document.getElementById('completedBadge');
-  cb.textContent=doneList.length;
-  cb.className='queue-badge'+(doneList.length>0?' on':'');
-  cb.style.background='var(--green)';
+  if(cb){
+    cb.textContent=doneList.length;
+    cb.className='queue-badge'+(doneList.length>0?' on':'');
+    cb.style.background='var(--green)';
+  }
 
   const jl=document.getElementById('jobsList');
   if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';return;}
@@ -2923,6 +2940,126 @@ function renderSchedule(){
   setupColumnResizers();
   // Hook up drag-drop for column reordering
   setupColumnReorder();
+}
+
+// Extract numeric qty from values like "50 pcs", "1,200", 50.
+function parseQty(v){
+  if(v===null||v===undefined)return 0;
+  if(typeof v==='number')return v;
+  const m=String(v).replace(/,/g,'').match(/(\d+(?:\.\d+)?)/);
+  return m?Number(m[1]):0;
+}
+
+// ── PRODUCTION FLOW (live workload by station) ─────────────────────────────
+// Visual board showing all production stations laid out in stage order.
+// Each station card displays the count of currently active people, orders
+// (lines with at least one alive station here), and total qty. Useful to
+// spot workload imbalance — if one team has 3x the qty of another, it's
+// obvious at a glance.
+//
+// Data source: already-loaded `lines` array. No DB call. Recomputed on every
+// render so realtime updates flow through naturally.
+function renderProductionFlow(){
+  const body=document.getElementById('flowBody');
+  const summary=document.getElementById('flowSummary');
+  if(!body)return;
+
+  // Stage layout — left-to-right reading order
+  const STAGES=[
+    {name:'Gateway / Giri\u015f',     teams:['Cutting','Part Pull']},
+    {name:'Crimping / B\u00fcken',    teams:['C1','C2','C3','C4']},
+    {name:'Finish / Bitir',           teams:['Testing / Packing']}
+  ];
+
+  // Aggregate per-team metrics from active line stations.
+  // ALIVE = active|paused|waiting|queue. We count a line as "in" a station
+  // if it has an alive station there. People = distinct device_names with
+  // an ACTIVE (not queued) station here.
+  const ALIVE=new Set(['active','paused','waiting','queue']);
+  const ACTIVE_FOR_PEOPLE=new Set(['active','paused']);
+  const stats=new Map();
+  for(const team of [].concat(...STAGES.map(s=>s.teams))){
+    stats.set(team,{team,lines:new Set(),qty:0,people:new Set(),activeStations:0,queuedStations:0});
+  }
+  for(const line of lines){
+    if(line.fully_done)continue;
+    const sts=line.stations||[];
+    for(const s of sts){
+      if(!ALIVE.has(s.state))continue;
+      if(!stats.has(s.grp))continue;
+      const st=stats.get(s.grp);
+      st.lines.add(line.id);
+      // Sum qty once per (line, team) - if the same team has both queue + active for the same line, count once
+      // Easier: we'll add qty per unique line below
+      if(s.state==='active'||s.state==='paused')st.activeStations++;
+      else st.queuedStations++;
+      if(ACTIVE_FOR_PEOPLE.has(s.state)&&s.device_name){
+        st.people.add(String(s.device_name).trim());
+      }
+    }
+  }
+  // Add qty per (line, team) — once per unique line
+  for(const line of lines){
+    if(line.fully_done)continue;
+    const teamsForLine=new Set();
+    for(const s of (line.stations||[])){
+      if(ALIVE.has(s.state)&&stats.has(s.grp))teamsForLine.add(s.grp);
+    }
+    const qty=parseQty(line.qty);
+    for(const team of teamsForLine){
+      stats.get(team).qty+=qty;
+    }
+  }
+
+  // Top summary: total active people / orders / qty
+  const totalPeople=new Set();
+  let totalOrders=0,totalQty=0;
+  for(const s of stats.values()){
+    s.people.forEach(p=>totalPeople.add(p));
+    totalOrders+=s.lines.size;
+    totalQty+=s.qty;
+  }
+  summary.innerHTML=`👤 <strong>${totalPeople.size}</strong> people active · 📋 <strong>${totalOrders}</strong> active station-orders · 📦 <strong>${totalQty.toLocaleString()}</strong> total pcs`;
+
+  // Find max qty across stations for heatmap color intensity
+  let maxQty=0;
+  for(const s of stats.values())if(s.qty>maxQty)maxQty=s.qty;
+
+  // Render stages as horizontal rows with stations side-by-side
+  let html='<div style="display:flex;flex-direction:column;gap:24px;max-width:1400px;margin:0 auto;">';
+  for(let si=0;si<STAGES.length;si++){
+    const stage=STAGES[si];
+    html+=`<div>
+      <div style="font-size:11px;color:var(--txt3);text-transform:uppercase;font-weight:600;letter-spacing:.5px;margin-bottom:10px;padding-left:4px;">${stage.name}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">`;
+    for(const team of stage.teams){
+      const st=stats.get(team);
+      const pCount=st.people.size;
+      const oCount=st.lines.size;
+      const qCount=st.qty;
+      // Color intensity by qty ratio
+      const ratio=maxQty>0?qCount/maxQty:0;
+      const intensity=Math.min(0.85,0.15+ratio*0.7);
+      const accent=qCount===0?'var(--bdr3)':`rgba(55,138,221,${intensity.toFixed(2)})`;
+      const bg=qCount===0?'var(--bg1)':`rgba(55,138,221,${(intensity*0.12).toFixed(3)})`;
+      html+=`<div style="flex:1;min-width:200px;background:${bg};border:1px solid var(--bdr3);border-left:4px solid ${accent};border-radius:var(--r-md);padding:14px 16px;">
+        <div style="font-size:14px;font-weight:600;color:var(--txt1);margin-bottom:10px;">${team}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udc64 People</span><strong>${pCount}</strong></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udccb Orders</span><strong>${oCount}</strong></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--txt3);">\ud83d\udce6 Qty</span><strong>${qCount.toLocaleString()}</strong></div>
+          ${st.activeStations||st.queuedStations?`<div style="font-size:10px;color:var(--txt3);margin-top:4px;padding-top:6px;border-top:1px solid var(--bdr3);">${st.activeStations} active \u00b7 ${st.queuedStations} queued</div>`:''}
+        </div>
+      </div>`;
+    }
+    html+='</div></div>';
+    // Connector arrow between stages
+    if(si<STAGES.length-1){
+      html+='<div style="text-align:center;color:var(--txt3);font-size:24px;line-height:1;margin:-12px 0;">\u2193</div>';
+    }
+  }
+  html+='</div>';
+  body.innerHTML=html;
 }
 
 // ── SCHEDULE FILTERS (collapsible panel) ───────────────────────────────────
