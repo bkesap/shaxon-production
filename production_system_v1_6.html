@@ -2869,12 +2869,11 @@ function renderSchedule(){
     onhand:     {label:'On Hand',      align:'right', width:90},
     onorder:    {label:'On PO',        align:'right', width:90},
     eta:        {label:'ETA',          align:'left',  width:90},
-    status:     {label:'Status',       align:'left',  width:110},
     ship:       {label:'Ship Date',    align:'left',  width:130},
     salesperson:{label:'Sales Person', align:'left',  width:120},
     notes:      {label:'Notes',        align:'left',  width:200}
   };
-  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','status','ship','salesperson','notes'];
+  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','ship','salesperson','notes'];
   let colOrder=[];
   try{
     const saved=JSON.parse(localStorage.getItem('shaxon_sched_col_order')||'null');
