@@ -1302,7 +1302,8 @@ async function _loadAllImpl(){
     const healed=await autoMergeQueuePairs();
     const partialed=await autoMergePartialPrep();
     const folded=await autoMergeBackorders();
-    if(healed||partialed||folded){
+    const orphaned=await autoMergeOrphanPrepQueue();
+    if(healed||partialed||folded||orphaned){
       const {data:sd2}=await sb.from('stations').select('*').order('started_at');
       if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
     }
@@ -1419,6 +1420,53 @@ async function autoMergeBackorders(){
     }
   }finally{
     _boMergeBusy=false;
+  }
+  return changed;
+}
+
+// ORPHAN PREP QUEUE heal (v7). A Cutting/Part Pull 'queue' row is an orphan
+// duplicate when the line has ALREADY been fully consumed downstream: either
+// the line is fully_done, OR a C-team (C1-C4) or Testing/Packing has a
+// done/taken station whose sent_qty covers the FULL line qty. In that case the
+// prep work was entirely picked up and finished, so any lingering prep 'queue'
+// row is leftover garbage — the exact "same item shows in the queue twice"
+// symptom (once "from Cutting" and once "from C4"). autoMergeQueuePairs misses
+// it because it only collapses when BOTH a Cutting AND a Part Pull queue row
+// coexist; a lone surviving prep queue row slips through. We mark it 'taken'
+// (hidden, history kept).
+// BACK-ORDER SAFE: we act ONLY when a downstream stage finished the FULL line
+// qty. If a C-team has only a PARTIAL done (< line qty), the prep queue row may
+// be a legitimate back-order remainder, so we leave it untouched.
+let _orphanPrepBusy=false;
+async function autoMergeOrphanPrepQueue(){
+  if(_orphanPrepBusy)return false;
+  _orphanPrepBusy=true;
+  let changed=false;
+  const C_TEAMS=['C1','C2','C3','C4'];
+  const DONE_STATES=['done','taken'];
+  try{
+    for(const line of lines){
+      const sts=line.stations||[];
+      const prepQueues=sts.filter(s=>(s.grp==='Cutting'||s.grp==='Part Pull')&&s.state==='queue');
+      if(!prepQueues.length)continue;
+      const lineQty=parseInt(line.qty)||0;
+      // Has a downstream stage finished the ENTIRE line qty?
+      const downstreamFull=lineQty>0&&sts.some(s=>
+        (C_TEAMS.includes(s.grp)||s.grp===FINAL)&&
+        DONE_STATES.includes(s.state)&&
+        (s.sent_qty||0)>=lineQty
+      );
+      if(!line.fully_done&&!downstreamFull)continue; // not safe to touch
+      for(const q of prepQueues){
+        try{
+          // Guarded by .eq('state','queue') so we never race a fresh TAKE.
+          await sb.from('stations').update({state:'taken'}).eq('id',q.id).eq('state','queue');
+          changed=true;
+        }catch(e){console.warn('orphan prep queue heal failed:',e);}
+      }
+    }
+  }finally{
+    _orphanPrepBusy=false;
   }
   return changed;
 }
@@ -2310,8 +2358,11 @@ function getLineStatus(line){
 // finished a step, so they can't cause "stuck" recovery to fire.
 function isPhantomDone(station){
   if(!station||station.state!=='done')return false;
-  // Real DONE rows from RPCs always have a client_op_id; bug rows are NULL.
-  if(!station.client_op_id)return true;
+  // NOTE: A NULL client_op_id alone is NOT a phantom signal — thousands of
+  // legitimate pre-RPC done rows have NULL client_op_id. Only the done_at
+  // sanity checks below (unparseable, or inconsistent with started_at) flag a
+  // real bug row. (Previously this returned true on NULL client_op_id and
+  // mis-classified ~3189 valid historical done rows as phantoms.)
   // done_at must be a parseable ISO timestamp. Bug rows sometimes had
   // strings like "11:00 AM" with no date — those won't parse.
   const da=station.done_at;
@@ -2726,7 +2777,7 @@ function computeShipStatus(ship){
   const today=new Date();today.setHours(0,0,0,0);
   const days=Math.ceil((sd-today)/(1000*60*60*24));
   let color='var(--blue)',bg='var(--blue-lt)',icon='📅',level='normal';
-  if(days<0){color='#c62828';bg:'#FFEBEE';icon='⏰';level='late';}
+  if(days<0){color='#c62828';bg='#FFEBEE';icon='⏰';level='late';}
   else if(days<=3){color='#c62828';bg='#FFEBEE';icon='⏰';level='urgent';}
   else if(days<=7){color='var(--amber-dk)';bg='var(--amber-lt)';icon='⏰';level='soon';}
   const dStr=sd.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -4914,7 +4965,7 @@ async function fixInconsistency(idx,action){
     if(action==='complete'){
       const j=jobs.find(x=>x.stationId===iss.stationId);
       const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
-      await sb.from('stations').update({state:'done',elapsed_ms:elapsed,done_at:iss.done_at||nowStr()}).eq('id',iss.stationId);
+      await sb.from('stations').update({state:'done',elapsed_ms:elapsed,done_at:iss.done_at||nowIso()}).eq('id',iss.stationId);
       if(iss.grp==='Testing / Packing'){
         await sb.from('lines').update({fully_done:true}).eq('id',iss.lineId);
       }
@@ -5008,7 +5059,7 @@ async function fixFlowGarbage(){
       await sb.from('stations').update({
         state:'done',
         elapsed_ms:elapsed,
-        done_at:st.done_at||nowStr()
+        done_at:st.done_at||nowIso()
       }).eq('id',x.stationId);
       fixed++;
     }
@@ -6076,8 +6127,8 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v6 — no global lock';
-const BUILD_TIME = '2026-05-19 01:55 UTC';
+const BUILD_TAG  = 'v7 — date/phantom fixes';
+const BUILD_TIME = '2026-05-31 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
   '%c PRODUCTION SYSTEM '+BUILD_TAG+' %c built '+BUILD_TIME+' ',
