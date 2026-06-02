@@ -947,7 +947,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v6 — NO LOCK (free press)';
+  b.textContent='● v8 — resume-guard + taken-dup';
 }
 
 function lockActions(srcEl){
@@ -1578,7 +1578,8 @@ function makeJob(line,st){
     receivedQty:receivedQty,
     isPartial:isPartialStation,
     fromGrp:st.from_grp||null,
-    parentStationId:st.parent_station_id||null
+    parentStationId:st.parent_station_id||null,
+    doneAt:st.done_at||null
   };
 }
 // Find a single station across all lines and build its job object directly,
@@ -1997,10 +1998,14 @@ async function pauseJob_impl(sid){
   catch(e){setSyncDot('error');showToast('Error','red');}
 }
 async function resumeJob_impl(sid){
-  // Guard: do not resume a station that was already done
-  const j=jobs.find(x=>x.stationId===sid);
-  if(j&&j.state==='done'){
-    showToast('Cannot resume a completed station','red');
+  // Guard: do not resume a station that was already done.
+  // Check state AND done_at — a leftover "paused" ghost can still carry a
+  // done_at (duplicate-take that never got closed). Resuming it re-stamps
+  // started_at to now and makes a finished job look alive again (the 8AM
+  // "who touched it" mystery). Block both cases.
+  const j=jobs.find(x=>x.stationId===sid)||buildJobForStation(sid);
+  if(j&&(j.state==='done'||j.doneAt)){
+    showToast('Cannot resume — this station is already completed. Use Find Inconsistencies to close it.','red');
     return;
   }
   setSyncDot('syncing');
@@ -4712,6 +4717,28 @@ function detectZombies(){
         orphanQueues.forEach(s=>{
           if(!zombies.some(z=>z.stationId===s.id)){
             zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' orphan queue row (no parent done — leftover from deleted/undone work)'});
+          }
+        });
+      }
+
+      // Signature (e): duplicate TAKEN rows (silent duplicate-take residue).
+      // A completed+consumed step should leave exactly one 'taken' row per qty.
+      // 2+ 'taken' rows for the same team+line with the SAME sent_qty = the
+      // duplicate-take backlog the other tools miss (they only scan
+      // alive/queue states, never 'taken'). Different qty = legit back-order,
+      // left alone. Keep the newest, flag the older copies for manual review.
+      const takenTeam=teamSts.filter(s=>s.state==='taken');
+      if(takenTeam.length>=2){
+        const byQty={};
+        takenTeam.forEach(s=>{const q=s.sent_qty||0;(byQty[q]=byQty[q]||[]).push(s);});
+        Object.values(byQty).forEach(g=>{
+          if(g.length<2)return;
+          g.sort((a,b)=>new Date(b.started_at||0)-new Date(a.started_at||0));
+          for(let i=1;i<g.length;i++){
+            const s=g[i];
+            if(!zombies.some(z=>z.stationId===s.id)){
+              zombies.push({stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,reason:shortGrp(team)+' duplicate completed row — same qty '+(s.sent_qty||0)+' pcs already taken (silent duplicate-take residue)'});
+            }
           }
         });
       }
