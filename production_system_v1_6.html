@@ -947,7 +947,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v8 — resume-guard + taken-dup';
+  b.textContent='● v9 — shift-resume ghost guard';
 }
 
 function lockActions(srcEl){
@@ -2417,6 +2417,56 @@ function getTotalElapsed(line){
   const aj=jobs.find(j=>j.lineId===line.id&&j.state==='active');
   if(aj&&aj.startedAt)return base+(Date.now()-aj.startedAt);
   return base;
+}
+// ── ANA ZAMAN (LEAD TIME) ───────────────────────────────────────────────────
+// Continuous wall-clock from when the order's first work started until it's
+// done (or now), BUT only counting shift hours (08:00–16:30, Mon–Fri). Unlike
+// getTotalElapsed (active-only "touch time", future RFID), this keeps running
+// while the item sits in queue between teams — that's the order's true lead
+// time. Night/weekend (factory closed) is NOT counted.
+function workingMsBetween(startMs,endMs){
+  if(!(endMs>startMs))return 0;
+  const sMin=timeToMinutes(shiftStart), eMin=timeToMinutes(shiftEnd);
+  if(eMin<=sMin)return 0;
+  let total=0;
+  const cur=new Date(startMs); cur.setHours(0,0,0,0);
+  const last=new Date(endMs);  last.setHours(0,0,0,0);
+  while(cur.getTime()<=last.getTime()){
+    const day=cur.getDay();
+    if(day!==0&&day!==6){ // skip Sun(0)/Sat(6)
+      const winStart=cur.getTime()+sMin*60000;
+      const winEnd=cur.getTime()+eMin*60000;
+      const a=Math.max(startMs,winStart);
+      const b=Math.min(endMs,winEnd);
+      if(b>a)total+=(b-a);
+    }
+    cur.setDate(cur.getDate()+1);
+  }
+  return total;
+}
+function getLeadTimeMs(line){
+  const sts=line.stations||[];
+  let startTs=null,lastStart=null;
+  for(const s of sts){
+    const t=s.started_at?new Date(s.started_at).getTime():NaN;
+    if(!isNaN(t)){
+      if(startTs===null||t<startTs)startTs=t;
+      if(lastStart===null||t>lastStart)lastStart=t;
+    }
+  }
+  if(startTs===null)return 0;
+  let endTs;
+  if(line.fully_done){
+    let maxDone=null;
+    for(const s of sts){
+      const t=s.done_at?new Date(s.done_at).getTime():NaN;
+      if(!isNaN(t)&&(maxDone===null||t>maxDone))maxDone=t;
+    }
+    endTs=maxDone!==null?maxDone:(lastStart!==null?lastStart:startTs);
+  }else{
+    endTs=Date.now();
+  }
+  return workingMsBetween(startTs,endTs);
 }
 function getCurrentStation(lineId){
   const line=lines.find(l=>l.id===lineId);if(!line)return null;
@@ -5575,7 +5625,12 @@ async function checkShiftEnd(){
   if(si.isActive&&!shiftStartNotified){
     shiftStartNotified=true;
     shiftEndNotified=false;
-    const pausedJobs=jobs.filter(j=>j.state==='paused');
+    // Guard: only resume GENUINELY-paused jobs. A done_at-carrying "paused"
+    // ghost (duplicate-take that never closed) must NOT be auto-resumed —
+    // doing so re-stamps started_at to now and resurrects a finished order
+    // back into Part Pull/Cutting (the "every morning we're back to start"
+    // bug). Mirrors the same guard in resumeJob_impl.
+    const pausedJobs=jobs.filter(j=>j.state==='paused'&&!j.doneAt);
     if(pausedJobs.length>0){
       setSyncDot('syncing');
       try{
