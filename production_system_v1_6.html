@@ -947,7 +947,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v9 — shift-resume ghost guard';
+  b.textContent='● v10 — global shift settings (DB)';
 }
 
 function lockActions(srcEl){
@@ -1649,6 +1649,20 @@ function setupRealtime(){
   sb.channel('shaxon-prod-v21')
     .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>scheduleLoadAll())
     .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>scheduleLoadAll())
+    .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},(payload)=>{
+      // Global shift times changed on ANOTHER device → apply instantly here.
+      // Supabase is the single source of truth; no per-device localStorage drift.
+      try{
+        const row=payload.new||payload.old;
+        if(!row)return;
+        if(row.shift_start)shiftStart=row.shift_start;
+        if(row.shift_end)shiftEnd=row.shift_end;
+        localStorage.setItem('shaxon_shift_start',shiftStart); // offline cache only
+        localStorage.setItem('shaxon_shift_end',shiftEnd);
+        shiftEndNotified=false;
+        updateShiftBar();
+      }catch(e){console.warn('app_settings realtime handler error:',e);}
+    })
     .on('postgres_changes',{event:'*',schema:'public',table:'schedule_notes'},(payload)=>{
       // Merge the change into the local map and re-render Schedule only if
       // it's the currently active page and no note input is being typed in.
@@ -5521,22 +5535,47 @@ let shiftStart='08:00';
 let shiftEnd='16:30';
 let shiftEndNotified=false;
 
-function loadShiftSettings(){
+async function loadShiftSettings(){
+  // MASTER = Supabase app_settings (single global row id=1). Per-device
+  // localStorage was the authority before, which let two devices hold
+  // different shift starts (08:00 vs 10:00) — the auto-resume then fired at
+  // two times and resurrected finished jobs. Now DB rules; localStorage is
+  // only an OFFLINE fallback cache, never the source of truth.
+  try{
+    const {data,error}=await sb.from('app_settings').select('shift_start,shift_end').eq('id',1).single();
+    if(!error&&data){
+      if(data.shift_start)shiftStart=data.shift_start;
+      if(data.shift_end)shiftEnd=data.shift_end;
+      localStorage.setItem('shaxon_shift_start',shiftStart); // cache for offline only
+      localStorage.setItem('shaxon_shift_end',shiftEnd);
+      return;
+    }
+  }catch(e){console.warn('shift settings DB load failed, using offline cache:',e);}
+  // Offline / table-missing fallback: last known cached value.
   const s=localStorage.getItem('shaxon_shift_start');
   const e=localStorage.getItem('shaxon_shift_end');
   if(s)shiftStart=s;
   if(e)shiftEnd=e;
 }
-function saveShiftSettings(){
+async function saveShiftSettings(){
   const s=document.getElementById('shiftStartInput')?.value;
   const e=document.getElementById('shiftEndInput')?.value;
   if(!s||!e){showToast('Enter both times','red');return;}
+  setSyncDot('syncing');
+  try{
+    const {error}=await sb.from('app_settings')
+      .upsert({id:1,shift_start:s,shift_end:e,updated_at:new Date().toISOString()},{onConflict:'id'});
+    if(error)throw error;
+  }catch(err){
+    console.error('shift save failed',err);setSyncDot('error');
+    showToast('Error saving shift to DB / Loi luu','red');return;
+  }
   shiftStart=s;shiftEnd=e;
-  localStorage.setItem('shaxon_shift_start',s);
+  localStorage.setItem('shaxon_shift_start',s); // cache for offline only
   localStorage.setItem('shaxon_shift_end',e);
   shiftEndNotified=false;
   updateShiftBar();
-  showToast('Shift times saved / Da luu gio ca lam viec','green');
+  showToast('Shift times saved — all devices / Da luu (tat ca thiet bi)','green');
 }
 function timeToMinutes(t){
   const [h,m]=(t||'').split(':').map(Number);
@@ -6209,8 +6248,8 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v7 — date/phantom fixes';
-const BUILD_TIME = '2026-05-31 PDT';
+const BUILD_TAG  = 'v10 — global shift (DB) + ghost guard';
+const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
   '%c PRODUCTION SYSTEM '+BUILD_TAG+' %c built '+BUILD_TIME+' ',
@@ -6221,7 +6260,7 @@ console.log('%c↳ If you do NOT see this line after refresh, the OLD file is st
 
 async function init(){
   _lockBadge('idle');
-  loadShiftSettings();
+  await loadShiftSettings();
   updateClock();
   updateShiftBar();
   updatePendingBadge();
