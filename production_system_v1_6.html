@@ -947,7 +947,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v10 — global shift settings (DB)';
+  b.textContent='● v11 — break-aware time + fully_done guard';
 }
 
 function lockActions(srcEl){
@@ -1041,6 +1041,36 @@ function nowStr(){
   return h+':'+pad(m)+' '+ap;
 }
 function nowIso(){return new Date().toISOString();}
+// ── BREAK-AWARE TIME (v11) ───────────────────────────────────────────────────
+// Workers do not work during breaks, so those minutes must NOT count toward a
+// station's elapsed/labor time. We deduct break windows from every active
+// segment instead of pausing/resuming state (state-based pause is exactly the
+// shift-resume ghost path we fixed in v9/v10 — never reintroduce it).
+// Times are Pacific local; all users are in LA so device-local == Pacific.
+// Daily breaks: 09:30-09:45 and 14:00-14:15.
+const BREAK_WINDOWS=[[9,30,9,45],[14,0,14,15]];
+function breakMsBetween(fromMs,toMs){
+  if(!(toMs>fromMs))return 0;
+  let total=0;
+  const d=new Date(fromMs);d.setHours(0,0,0,0);
+  for(let day=d.getTime();day<=toMs;day+=86400000){
+    for(const [sh,sm,eh,em] of BREAK_WINDOWS){
+      const bs=new Date(day);bs.setHours(sh,sm,0,0);
+      const be=new Date(day);be.setHours(eh,em,0,0);
+      const s=Math.max(fromMs,bs.getTime());
+      const e=Math.min(toMs,be.getTime());
+      if(e>s)total+=e-s;
+    }
+  }
+  return total;
+}
+// Worked ms for an active segment [startedAt, now], breaks excluded.
+function activeMs(startedAt,now){
+  now=(now==null)?Date.now():now;
+  const t=(startedAt instanceof Date)?startedAt.getTime():(typeof startedAt==='number'?startedAt:new Date(startedAt).getTime());
+  if(!t)return 0;
+  return Math.max(0,(now-t)-breakMsBetween(t,now));
+}
 // Extract HH:MM AM/PM from any done_at value (ISO datetime or already "3:30 PM")
 function fmtTime(v){
   if(!v)return '';
@@ -2006,7 +2036,7 @@ async function confirmPartPull(yes){
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
 async function pauseJob_impl(sid){
   const j=jobs.find(x=>x.stationId===sid);if(!j)return;
-  const add=Date.now()-j.startedAt;
+  const add=activeMs(j.startedAt);
   setSyncDot('syncing');
   try{await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',sid);loadAll();}
   catch(e){setSyncDot('error');showToast('Error','red');}
@@ -2119,7 +2149,7 @@ async function confirmTestComplete_impl(){
 }
 
 async function executeDone_impl(sid,sentQty,remaining,markComplete,j,availableQty){
-  const add=j.state==='active'?Date.now()-j.startedAt:0;
+  const add=j.state==='active'?activeMs(j.startedAt):0;
   const total=j.elapsed+add;
   setSyncDot('syncing');
   try{
@@ -2429,7 +2459,7 @@ function getStuckInfo(line){
 function getTotalElapsed(line){
   const base=line.stations.reduce((a,s)=>a+(s.elapsed_ms||0),0);
   const aj=jobs.find(j=>j.lineId===line.id&&j.state==='active');
-  if(aj&&aj.startedAt)return base+(Date.now()-aj.startedAt);
+  if(aj&&aj.startedAt)return base+activeMs(aj.startedAt);
   return base;
 }
 // ── ANA ZAMAN (LEAD TIME) ───────────────────────────────────────────────────
@@ -2545,7 +2575,7 @@ function renderWorker(){
   }
 
   jl.innerHTML=myJobs.map(j=>{
-    const el=j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0);
+    const el=j.elapsed+(j.state==='active'&&j.startedAt?activeMs(j.startedAt):0);
     const isWaiting=j.state==='waiting';
     const isFinal=j.group===FINAL;
     const slCls=isWaiting?'sl-purple':j.state==='paused'?'sl-amber':'sl-green';
@@ -4939,7 +4969,7 @@ async function cleanZombies(){
       const j=jobs.find(x=>x.stationId===sid);
       const update={state:'taken'};
       if(j&&j.state==='active'&&j.startedAt){
-        update.elapsed_ms=j.elapsed+(Date.now()-j.startedAt);
+        update.elapsed_ms=j.elapsed+(activeMs(j.startedAt));
       }
       await sb.from('stations').update(update).eq('id',sid);
       cleaned++;
@@ -4996,8 +5026,13 @@ function detectInconsistencies(){
   for(const line of lines){
     const sts=line.stations||[];
     if(line.fully_done){
-      const aliveTP=sts.filter(s=>s.grp===FINAL&&ALIVE.includes(s.state));
-      aliveTP.forEach(s=>{
+      // v11: a fully_done order must have NO live station of ANY group — not
+      // just Testing/Packing. The shift-resume ghost batch resurrected C-team
+      // and prep stations on completed orders too (the dashboard "blind spot"
+      // that neither the old T/P-only check nor Flow Garbage caught). Also flag
+      // 'queue' leftovers here.
+      const aliveAny=sts.filter(s=>['active','paused','waiting','queue'].includes(s.state));
+      aliveAny.forEach(s=>{
         issues.push({type:'fully_done_but_alive',stationId:s.id,lineId:line.id,so:line.so,item:line.item,qty:line.qty,grp:s.grp,state:s.state,done_at:s.done_at,sent:s.sent_qty,fully_done:line.fully_done,description:'Line marked complete but '+s.grp+' is still '+s.state});
       });
     }
@@ -5055,7 +5090,7 @@ async function fixInconsistency(idx,action){
   try{
     if(action==='complete'){
       const j=jobs.find(x=>x.stationId===iss.stationId);
-      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
+      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?activeMs(j.startedAt):0)):0;
       await sb.from('stations').update({state:'done',elapsed_ms:elapsed,done_at:iss.done_at||nowIso()}).eq('id',iss.stationId);
       if(iss.grp==='Testing / Packing'){
         await sb.from('lines').update({fully_done:true}).eq('id',iss.lineId);
@@ -5146,7 +5181,7 @@ async function fixFlowGarbage(){
       if(!st)continue;
       if(st.state==='done'||st.state==='taken')continue;
       const j=jobs.find(jj=>jj.stationId===x.stationId);
-      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?Date.now()-j.startedAt:0)):0;
+      const elapsed=j?(j.elapsed+(j.state==='active'&&j.startedAt?activeMs(j.startedAt):0)):0;
       await sb.from('stations').update({
         state:'done',
         elapsed_ms:elapsed,
@@ -5366,7 +5401,7 @@ async function testRemainingChoice(choice){
   testRemainingPending=null;
   setSyncDot('syncing');
   try{
-    const add=j.state==='active'?Date.now()-j.startedAt:0;
+    const add=j.state==='active'?activeMs(j.startedAt):0;
     const total=j.elapsed+add;
     if(choice==='queue'){
       // Atomic: mark done + create queue row for remaining
@@ -5649,7 +5684,7 @@ async function checkShiftEnd(){
       setSyncDot('syncing');
       try{
         for(const j of activeJobs){
-          const add=Date.now()-j.startedAt;
+          const add=activeMs(j.startedAt);
           await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
         }
         await loadAll();
@@ -6248,7 +6283,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v10 — global shift (DB) + ghost guard';
+const BUILD_TAG  = 'v11 — break-aware time + fully_done guard';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
