@@ -440,6 +440,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Nhom</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
+  <div class="nav-tab" onclick="showPage('finished',this)">✅ Finished Orders</div>
   <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
   <div class="nav-tab" onclick="showPage('schedule',this)">📅 Schedule</div>
   <div class="nav-tab" onclick="showPage('flow',this)">🔄 Production Flow</div>
@@ -583,6 +584,22 @@ body{font-family:var(--font);background:var(--bg2);}
       <div class="dash-stat"><div class="dash-stat-val" id="ds-done">0</div><div class="dash-stat-lbl">Complete</div></div>
     </div>
     <div class="dash-body" id="dashBody"><div class="empty-dash">Loading...</div></div>
+  </div>
+</div>
+
+<!-- ══ FINISHED ORDERS ══ -->
+<div class="page" id="page-finished">
+  <div class="dash-inner">
+    <div class="dash-top">
+      <h2>Finished Orders <span style="font-size:13px;font-weight:400;color:var(--txt3);">/ Don hang hoan thanh</span></h2>
+      <input type="text" class="dash-search" id="finishedSearch" placeholder="🔍 Search SO or item..." oninput="renderFinishedOrders()" autocomplete="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"/>
+      <button onclick="loadFinishedOrders(true)" style="padding:6px 12px;border:1px solid var(--bdr3);border-radius:var(--r-sm);background:var(--bg1);color:var(--txt2);cursor:pointer;font-size:13px;">🔄 Refresh</button>
+    </div>
+    <div class="dash-stats">
+      <div class="dash-stat"><div class="dash-stat-val" id="fd-so">—</div><div class="dash-stat-lbl">Sales Orders</div></div>
+      <div class="dash-stat"><div class="dash-stat-val" id="fd-lines">—</div><div class="dash-stat-lbl">Total Lines</div></div>
+    </div>
+    <div class="dash-body" id="finishedBody"><div class="empty-dash">Click to load finished orders / Nhan de tai don hang hoan thanh</div></div>
   </div>
 </div>
 
@@ -931,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v12 — completed tab removed, load only active lines';
+  b.textContent='● v12 — completed tab removed + finished orders page';
 }
 
 function lockActions(srcEl){
@@ -1244,11 +1261,12 @@ function showPage(p,el){
   // any page (Worker "TT10", Queue "TT", etc.) silently hides rows so the
   // worker sees an empty/stale list and the only fix was a full refresh.
   // Clearing all of them on navigation guarantees a clean view every time.
-  ['jobSearch','queueSearch','dashSearch','schedSearch','adminSearch'].forEach(id=>{
+  ['jobSearch','queueSearch','dashSearch','finishedSearch','schedSearch','adminSearch'].forEach(id=>{
     const _b=document.getElementById(id);
     if(_b&&_b.value)_b.value='';
   });
   if(p==='dash')renderDash();
+  if(p==='finished')loadFinishedOrders();
   if(p==='queue')renderQueue();
   if(p==='worker'&&typeof renderWorker==='function')renderWorker();
   if(p==='admin')renderAdmin();
@@ -3438,6 +3456,95 @@ function startResize(e){
   document.addEventListener('mouseup',onUp);
   document.addEventListener('touchmove',onMove);
   document.addEventListener('touchend',onUp);
+}
+
+// ── FINISHED ORDERS ───────────────────────────────────────────────────────────
+let _finishedLines=null; // cache; null=not loaded yet
+let _finishedLoading=false;
+
+async function loadFinishedOrders(forceRefresh=false){
+  if(_finishedLoading)return;
+  if(_finishedLines&&!forceRefresh){renderFinishedOrders();return;}
+  _finishedLoading=true;
+  const body=document.getElementById('finishedBody');
+  if(body)body.innerHTML='<div class="empty-dash">Loading... / Dang tai...</div>';
+  try{
+    const {data:ld,error:le}=await sb.from('lines').select('*').eq('fully_done',true).order('created_at',{ascending:false});
+    if(le)throw le;
+    const lineIds=ld.map(l=>l.id);
+    let allSt=[];
+    // fetch stations in chunks of 400 to stay within URL limits
+    for(let i=0;i<lineIds.length;i+=400){
+      const chunk=lineIds.slice(i,i+400);
+      const {data:sd}=await sb.from('stations').select('*').in('line_id',chunk);
+      if(sd)allSt=allSt.concat(sd);
+    }
+    _finishedLines=ld.map(l=>({...l,stations:allSt.filter(s=>s.line_id===l.id)}));
+  }catch(err){
+    console.error(err);
+    if(body)body.innerHTML='<div class="empty-dash" style="color:var(--red);">Load error — check connection</div>';
+    _finishedLoading=false;return;
+  }
+  _finishedLoading=false;
+  renderFinishedOrders();
+}
+
+function renderFinishedOrders(){
+  const body=document.getElementById('finishedBody');
+  if(!body)return;
+  if(!_finishedLines){body.innerHTML='<div class="empty-dash">Click Refresh to load / Nhan Refresh de tai</div>';return;}
+  const ds=(document.getElementById('finishedSearch')?.value||'').trim().toUpperCase();
+  const soMap={};
+  _finishedLines.forEach(l=>{
+    if(ds&&!l.so.includes(ds)&&!l.item.toUpperCase().includes(ds))return;
+    if(!soMap[l.so])soMap[l.so]=[];
+    soMap[l.so].push(l);
+  });
+  const soKeys=Object.keys(soMap);
+  document.getElementById('fd-so').textContent=soKeys.length;
+  document.getElementById('fd-lines').textContent=_finishedLines.length;
+  if(!soKeys.length){body.innerHTML='<div class="empty-dash">No finished orders match</div>';return;}
+  let html='';
+  soKeys.forEach(so=>{
+    const soLines=soMap[so];
+    const total=soLines.length;
+    const rows=soLines.map(l=>{
+      const allSt=l.stations.filter(s=>s.state!=='taken');
+      const flowHtml=allSt.length?allSt.map((s,idx)=>{
+        let cls='fb-done',labelSuffix=' ✓';
+        if(s.state==='active'){cls='fb-active';labelSuffix=' ⚡';}
+        else if(s.state==='paused'){cls='fb-paused';labelSuffix=' ⏸';}
+        else if(s.state==='queue'){cls='fb-queue';labelSuffix=' →';}
+        const arrow=idx<allSt.length-1?'<span class="flow-arr">→</span>':'';
+        const qtyInfo=s.sent_qty?` (${s.sent_qty})`:'';
+        return `<div class="flow-step"><span class="fb ${cls}"><span class="fb-dot"></span>${shortGrp(s.grp)}${labelSuffix}${qtyInfo}</span>${arrow}</div>`;
+      }).join(''):'<span style="font-size:12px;color:var(--txt3);">—</span>';
+      const finishSt=l.stations.find(s=>s.grp===FINAL&&s.state==='done'&&s.done_at);
+      const finishedAt=finishSt
+        ?`<span style="color:var(--green);font-weight:500;">✓ ${fmtTime(finishSt.done_at)}</span>`
+        :`<span style="color:var(--txt3);">—</span>`;
+      const elapsed=getTotalElapsed(l);
+      return `<tr class="row-done">
+        <td class="item-num" title="${l.item}">${l.item}</td>
+        <td>${l.qty}</td>
+        <td><span class="ob ob-done"><span class="ob-dot"></span>Complete</span></td>
+        <td><div class="flow">${flowHtml}</div></td>
+        <td style="font-size:12px;color:var(--txt2);font-variant-numeric:tabular-nums;white-space:nowrap;">${formatMs(elapsed)}</td>
+        <td style="font-size:12px;white-space:nowrap;">${finishedAt}</td>
+      </tr>`;
+    }).join('');
+    html+=`<div class="so-block fully-done">
+      <div class="so-block-hdr">
+        <div class="so-no">${so}</div>
+        <span class="tag tag-complete">ORDER COMPLETE</span>
+        <div class="so-meta">${total} line${total!==1?'s':''}</div>
+        <div style="flex:1"></div>
+        <div class="prog-wrap"><div class="prog-fill complete" style="width:100%"></div></div>
+      </div>
+      <table class="so-table"><thead><tr><th style="width:140px;">Item No</th><th style="width:70px;">Qty</th><th style="width:100px;">Status</th><th>Station Flow</th><th style="width:80px;">Time</th><th style="width:100px;">Finished At</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  });
+  body.innerHTML=html;
 }
 
 // ── RENDER DASHBOARD ──────────────────────────────────────────────────────────
