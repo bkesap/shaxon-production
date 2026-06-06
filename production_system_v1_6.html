@@ -439,7 +439,6 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
   <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Nhom</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
-  <div class="nav-tab" onclick="showPage('completed',this)">Completed <span class="vn">Hoan thanh</span></div>
   <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
   <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
   <div class="nav-tab" onclick="showPage('schedule',this)">📅 Schedule</div>
@@ -548,21 +547,6 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
 </div>
 
-<!-- ══ COMPLETED ══ -->
-<div class="page" id="page-completed">
-  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
-    <div class="panel-hdr" style="padding:10px 16px;">
-      <span class="panel-lbl">Completed Today (<span id="statDone">0</span>)</span>
-      <div style="display:flex;gap:14px;margin-left:auto;align-items:center;">
-        <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statActive" style="font-size:16px;">0</span> <span class="d-stat-en" style="font-size:11px;">Active</span></div>
-        <div class="d-stat" style="border:none;padding:0;text-align:left;"><span class="d-stat-val" id="statAvg" style="font-size:16px;">--</span> <span class="d-stat-en" style="font-size:11px;">Avg Time</span></div>
-      </div>
-    </div>
-    <div class="done-scroll" id="doneList" style="flex:1;overflow-y:auto;">
-      <div class="empty-done">Nothing completed yet<br>Chua co gi hoan thanh</div>
-    </div>
-  </div>
-</div>
 
 <!-- ══ QUEUE ══ -->
 <div class="page" id="page-queue">
@@ -947,7 +931,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v11 — break-aware time + fully_done guard';
+  b.textContent='● v12 — completed tab removed, load only active lines';
 }
 
 function lockActions(srcEl){
@@ -1268,7 +1252,6 @@ function showPage(p,el){
   if(p==='queue')renderQueue();
   if(p==='worker'&&typeof renderWorker==='function')renderWorker();
   if(p==='admin')renderAdmin();
-  if(p==='completed')renderDonePanel();
   if(p==='daily')renderDaily();
   if(p==='schedule'){
     // Restore filter panel open/closed state from previous session
@@ -1321,7 +1304,7 @@ async function loadAll(){
 async function _loadAllImpl(){
   setSyncDot('syncing');
   try{
-    const {data:ld,error:le}=await sb.from('lines').select('*').order('created_at');
+    const {data:ld,error:le}=await sb.from('lines').select('*').eq('fully_done',false).order('created_at');
     if(le)throw le;
     const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
@@ -1337,7 +1320,7 @@ async function _loadAllImpl(){
       const {data:sd2}=await sb.from('stations').select('*').order('started_at');
       if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
     }
-    rebuildJobs();rebuildDone();rebuildQueue();
+    rebuildJobs();rebuildQueue();
     setSyncDot('ok');
     renderWorker();renderQueue();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
@@ -2555,17 +2538,6 @@ function renderWorker(){
   });
 
   document.getElementById('activeCount').textContent=(team&&!isAll)?jobs.filter(j=>j.group===team).length:jobs.length;
-  document.getElementById('statActive').textContent=jobs.length;
-  document.getElementById('statDone').textContent=doneList.length;
-  const times=doneList.map(d=>d.totalMs).filter(Boolean);
-  document.getElementById('statAvg').textContent=times.length?formatMs(times.reduce((a,b)=>a+b,0)/times.length):'--';
-  // Update completed badge (element may be removed; guard for null)
-  const cb=document.getElementById('completedBadge');
-  if(cb){
-    cb.textContent=doneList.length;
-    cb.className='queue-badge'+(doneList.length>0?' on':'');
-    cb.style.background='var(--green)';
-  }
 
   const jl=document.getElementById('jobsList');
   if(!team){jl.innerHTML='<div class="empty-jobs">Select your team above<br>Chon nhom cua ban o tren</div>';return;}
