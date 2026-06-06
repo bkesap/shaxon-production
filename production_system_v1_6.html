@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v13 — PO data sync + finished orders page';
+  b.textContent='● v13 — PO sync fix + finished orders page';
 }
 
 function lockActions(srcEl){
@@ -4216,6 +4216,7 @@ async function handleInventoryFile(event){
     const dupCount=rows.length-records.length;
     // Stash PO rows for the commit step
     window._pendingInventoryPo=poRows;
+    window._pendingPOSyncRows=poRows;
     if(dupCount>0){
       console.log('Inventory dedup: '+rows.length+' raw → '+records.length+' unique items, '+poRows.length+' PO rows tracked');
     }
@@ -4363,9 +4364,10 @@ async function handlePOSyncFile(event){
         📋 <strong>${poRows.length} PO rows</strong> ready to import.<br>
         Sample: ${poRows.slice(0,3).map(r=>`${r.item_code} / SO ${r.so_number||'—'} / qty ${r.qty_on_order} / eta ${r.earliest_eta||'—'}`).join(' · ')}
         <br><br>
-        <button onclick="commitPOSync(${JSON.stringify(poRows).replace(/</g,'\\u003c')})" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;font-size:13px;">✅ Confirm Import</button>
+        <button onclick="commitPOSync()" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;font-size:13px;">✅ Confirm Import</button>
       </div>`;
     }
+    window._pendingPOSyncRows=poRows;
     if(statusEl)statusEl.textContent=`${poRows.length} rows parsed. Review and confirm above.`;
   }catch(err){
     console.error(err);
@@ -4374,16 +4376,16 @@ async function handlePOSyncFile(event){
   }
 }
 
-async function commitPOSync(poRows){
+async function commitPOSync(){
+  const poRows=window._pendingPOSyncRows||[];
   const statusEl=document.getElementById('poSyncStatus');
   const previewEl=document.getElementById('poSyncPreview');
+  if(!poRows.length){showToast('No data to import — upload a file first','red');return;}
   if(statusEl)statusEl.textContent='Deleting old PO data...';
   showToast('🔄 Syncing PO data...');
   try{
-    // Delete all existing inventory_po rows with so_number (keep unlinked inventory PO rows)
-    const {error:delErr}=await sb.from('inventory_po').delete().not('so_number','is',null);
-    if(delErr)throw delErr;
-    // Insert in batches of 200
+    const {error:delErr}=await sb.from('inventory_po').delete().neq('id','00000000-0000-0000-0000-000000000000');
+    if(delErr){showToast('Delete failed: '+(delErr.message||JSON.stringify(delErr)),'red');if(statusEl)statusEl.textContent='Delete error: '+delErr.message;return;}
     const BATCH=200;
     for(let i=0;i<poRows.length;i+=BATCH){
       const {error}=await sb.from('inventory_po').insert(poRows.slice(i,i+BATCH));
