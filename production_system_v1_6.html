@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v12 — completed tab removed + finished orders page';
+  b.textContent='● v13 — PO data sync + finished orders page';
 }
 
 function lockActions(srcEl){
@@ -3769,6 +3769,22 @@ function renderAdmin(){
         </div>
       </div>
     </div>
+    <div class="admin-section" data-sec="posync">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('posync')">📦 PO Data Sync / Satin alma verileri</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
+            Upload Power BI PO export (CSV). Required columns: <strong>SO_Key</strong>, <strong>Description_2</strong> (item), <strong>PO Item No</strong> (material), <strong>Outstanding_Quantity</strong>, <strong>Expected_Receipt_Date</strong>. Replaces all existing PO-SO link data.
+          </div>
+          <div id="poSyncStatus" style="font-size:12px;color:var(--txt3);"></div>
+          <input type="file" id="poSyncFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handlePOSyncFile(event)"/>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="document.getElementById('poSyncFile').click()" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload PO Data</button>
+          </div>
+          <div id="poSyncPreview" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
     <div class="admin-section" data-sec="sosync">
       <div class="admin-section-hdr" onclick="toggleAdminSection('sosync')">📅 Sales Orders Sync / Sipari\u015f tarihleri</div>
       <div class="admin-section-body">
@@ -3917,7 +3933,7 @@ function getAdminSectionStates(){
     if(raw)return JSON.parse(raw);
   }catch(e){}
   // Default state: stuck open, all others collapsed
-  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',flowfix:'collapsed',shift:'collapsed',danger:'collapsed'};
+  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',posync:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',flowfix:'collapsed',shift:'collapsed',danger:'collapsed'};
 }
 
 function applyAdminSectionStates(){
@@ -4297,6 +4313,89 @@ async function loadInventoryStatus(){
     document.getElementById('inventoryStatus').textContent='📦 '+count+' items in inventory · last sync: '+ts;
   }catch(err){
     document.getElementById('inventoryStatus').textContent='⚠️ '+(err.message||'load failed');
+  }
+}
+
+async function handlePOSyncFile(event){
+  const file=event.target.files&&event.target.files[0];
+  event.target.value='';
+  if(!file)return;
+  if(typeof XLSX==='undefined'){showToast('Excel library not loaded','red');return;}
+  const statusEl=document.getElementById('poSyncStatus');
+  const previewEl=document.getElementById('poSyncPreview');
+  if(statusEl)statusEl.textContent='Reading file...';
+  showToast('📂 Reading PO file...');
+  try{
+    const data=await file.arrayBuffer();
+    const wb=XLSX.read(data,{type:'array',cellDates:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){showToast('Empty file','red');return;}
+    const nowIso=new Date().toISOString();
+    const poRows=[];
+    for(const r of rows){
+      // SO key
+      const soRaw=String(r['SO_Key']||r['SO Number']||r['so_key']||'').trim();
+      const soNum=soRaw?soRaw.replace(/^S0/i,'').replace(/^0+(\d{6})$/,'$1'):null;
+      // Item (Description_2)
+      const item=String(r['Description_2']||r['Item']||r['description_2']||'').trim();
+      // PO Item No (material)
+      const poItemNo=String(r['PO Item No']||r['PO_Item_No']||r['po_item_no']||'').trim();
+      // Outstanding qty
+      const outQty=parseFloat(String(r['Outstanding_Quantity']||r['Outstanding Qty']||'0').replace(/,/g,''))||0;
+      // Expected receipt date
+      const etaRaw=r['Expected_Receipt_Date']||r['Expected Receipt Date']||r['expected_receipt_date']||'';
+      let eta=null;
+      if(etaRaw instanceof Date){eta=etaRaw.toISOString().split('T')[0];}
+      else if(typeof etaRaw==='string'&&etaRaw.trim()){
+        const d=new Date(etaRaw.trim());
+        if(!isNaN(d))eta=d.toISOString().split('T')[0];
+      }
+      const itemCode=poItemNo||item;
+      if(!itemCode)continue;
+      poRows.push({item_code:itemCode,so_number:soNum||null,qty_on_order:outQty,earliest_eta:eta,last_synced:nowIso});
+    }
+    if(!poRows.length){showToast('No valid rows found — check column names','red');return;}
+    // Preview
+    if(previewEl){
+      previewEl.style.display='';
+      previewEl.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">
+        📋 <strong>${poRows.length} PO rows</strong> ready to import.<br>
+        Sample: ${poRows.slice(0,3).map(r=>`${r.item_code} / SO ${r.so_number||'—'} / qty ${r.qty_on_order} / eta ${r.earliest_eta||'—'}`).join(' · ')}
+        <br><br>
+        <button onclick="commitPOSync(${JSON.stringify(poRows).replace(/</g,'\\u003c')})" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;font-size:13px;">✅ Confirm Import</button>
+      </div>`;
+    }
+    if(statusEl)statusEl.textContent=`${poRows.length} rows parsed. Review and confirm above.`;
+  }catch(err){
+    console.error(err);
+    showToast('Error reading file: '+(err.message||''),'red');
+    if(statusEl)statusEl.textContent='Error: '+(err.message||'');
+  }
+}
+
+async function commitPOSync(poRows){
+  const statusEl=document.getElementById('poSyncStatus');
+  const previewEl=document.getElementById('poSyncPreview');
+  if(statusEl)statusEl.textContent='Deleting old PO data...';
+  showToast('🔄 Syncing PO data...');
+  try{
+    // Delete all existing inventory_po rows with so_number (keep unlinked inventory PO rows)
+    const {error:delErr}=await sb.from('inventory_po').delete().not('so_number','is',null);
+    if(delErr)throw delErr;
+    // Insert in batches of 200
+    const BATCH=200;
+    for(let i=0;i<poRows.length;i+=BATCH){
+      const {error}=await sb.from('inventory_po').insert(poRows.slice(i,i+BATCH));
+      if(error)throw error;
+    }
+    showToast('✅ PO data synced — '+poRows.length+' rows','green');
+    if(statusEl)statusEl.textContent='Last sync: '+new Date().toLocaleString()+' ('+poRows.length+' rows)';
+    if(previewEl)previewEl.style.display='none';
+  }catch(err){
+    console.error(err);
+    showToast('Sync failed: '+(err.message||''),'red');
+    if(statusEl)statusEl.textContent='Error: '+(err.message||'');
   }
 }
 
