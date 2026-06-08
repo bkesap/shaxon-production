@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v13 — PO sync fix + finished orders page';
+  b.textContent='● v14 — race condition double-guard (client+server)';
 }
 
 function lockActions(srcEl){
@@ -2154,11 +2154,26 @@ async function executeDone_impl(sid,sentQty,remaining,markComplete,j,availableQt
   const total=j.elapsed+add;
   setSyncDot('syncing');
   try{
-    // Build the "next station" params. For mark_complete, these are ignored
-    // server-side. Otherwise we always create a 'queue' row going from this
-    // group to whoever picks it up next (same convention as v1.6).
     const totalQty = parseInt(j.totalQty)||0;
     const nextIsPartial = sentQty < totalQty;
+
+    // CLIENT-SIDE RACE GUARD: before sending RPC, check if this line already
+    // has a live queue/active row for the same group. If yes, a parallel device
+    // already processed Done — skip the RPC to avoid a duplicate next row.
+    if(!markComplete){
+      const lineObj=lines.find(l=>l.id===j.lineId);
+      if(lineObj){
+        const alreadyLive=(lineObj.stations||[]).find(s=>
+          s.grp===j.group && s.state==='queue' && s.id!==sid
+        );
+        if(alreadyLive){
+          console.warn('[race-guard] Skipping Done RPC — live queue already exists for',j.group,j.lineId);
+          showToast('Already in queue — skipping duplicate','amber');
+          await scheduleLoadAll();
+          return;
+        }
+      }
+    }
 
     await rpcCall('rpc_done_station', {
       p_station_id: sid,
