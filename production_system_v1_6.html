@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v15 — race guard + visibility refresh (no interval)';
+  b.textContent='● v16 — auto-refresh read-only (no merge on visibility)';
 }
 
 function lockActions(srcEl){
@@ -1186,9 +1186,9 @@ async function processPendingOps(){
 // Retry pending ops when the network comes back
 window.addEventListener('online', ()=>{ processPendingOps().then(()=>loadAll()); });
 
-// Auto-refresh: reload when tab/app becomes visible (tablet unlocked, app switched back)
+// Auto-refresh: reload when tab/app becomes visible (read-only, no autoMerge writes)
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible') scheduleLoadAll();
+  if(document.visibilityState==='visible') loadAll('auto');
 });
 // And on a slower cadence regardless
 setInterval(()=>{ if(navigator.onLine) processPendingOps(); }, 15000);
@@ -1306,42 +1306,52 @@ function showPage(p,el){
 let _loadAllInFlight=false;
 let _loadAllQueued=false;
 let _loadAllTimer=null;
+let _loadAllAutoSource=false; // true = visibility-triggered (skip autoMerge writes)
 function scheduleLoadAll(){
   if(_loadAllTimer)clearTimeout(_loadAllTimer);
-  _loadAllTimer=setTimeout(()=>{ _loadAllTimer=null; loadAll(); }, 400);
+  _loadAllTimer=setTimeout(()=>{ _loadAllTimer=null; loadAll('user'); }, 400);
 }
 
-async function loadAll(){
+async function loadAll(source){
   // Non-reentrant: never let two loadAll() runs overlap. A request that
   // arrives mid-flight is collapsed into a single trailing run.
-  if(_loadAllInFlight){ _loadAllQueued=true; return; }
+  const isAuto=(source==='auto');
+  if(_loadAllInFlight){
+    // If a user-triggered request comes in while auto is running, upgrade to user
+    if(!isAuto)_loadAllAutoSource=false;
+    _loadAllQueued=true; return;
+  }
   _loadAllInFlight=true;
+  _loadAllAutoSource=isAuto;
   try{
     await _loadAllImpl();
   } finally {
     _loadAllInFlight=false;
+    _loadAllAutoSource=false;
     if(_loadAllQueued){ _loadAllQueued=false; scheduleLoadAll(); }
   }
 }
 
 async function _loadAllImpl(){
   setSyncDot('syncing');
+  const skipMerge=_loadAllAutoSource; // auto-refresh: read-only, no DB writes
   try{
     const {data:ld,error:le}=await sb.from('lines').select('*').eq('fully_done',false).order('created_at');
     if(le)throw le;
     const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
-    // State-based auto-heal: collapse duplicate Cutting/Part Pull queue rows.
-    // Runs every load so it fixes BOTH old garbage and new data. Returns true
-    // if it changed anything (then we reload once to get fresh state).
-    const healed=await autoMergeQueuePairs();
-    const partialed=await autoMergePartialPrep();
-    const folded=await autoMergeBackorders();
-    const orphaned=await autoMergeOrphanPrepQueue();
-    if(healed||partialed||folded||orphaned){
-      const {data:sd2}=await sb.from('stations').select('*').order('started_at');
-      if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
+    // autoMerge: only run on user-triggered loads (not auto-refresh) to prevent
+    // repeated DB writes from causing ghost rows on background refreshes.
+    if(!skipMerge){
+      const healed=await autoMergeQueuePairs();
+      const partialed=await autoMergePartialPrep();
+      const folded=await autoMergeBackorders();
+      const orphaned=await autoMergeOrphanPrepQueue();
+      if(healed||partialed||folded||orphaned){
+        const {data:sd2}=await sb.from('stations').select('*').order('started_at');
+        if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
+      }
     }
     rebuildJobs();rebuildQueue();
     setSyncDot('ok');
