@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v14 — race condition double-guard (client+server)';
+  b.textContent='● v14 — race guard + auto-refresh (visibility+60s)';
 }
 
 function lockActions(srcEl){
@@ -1185,6 +1185,13 @@ async function processPendingOps(){
 
 // Retry pending ops when the network comes back
 window.addEventListener('online', ()=>{ processPendingOps().then(()=>loadAll()); });
+
+// Auto-refresh: reload when tab/app becomes visible (tablet unlocked, app switched back)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible') scheduleLoadAll();
+});
+// Fallback interval: refresh every 60s for devices left open continuously
+setInterval(()=>{ if(document.visibilityState==='visible') scheduleLoadAll(); }, 60000);
 // And on a slower cadence regardless
 setInterval(()=>{ if(navigator.onLine) processPendingOps(); }, 15000);
 
