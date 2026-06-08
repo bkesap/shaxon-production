@@ -4358,16 +4358,20 @@ async function handlePOSyncFile(event){
     }
     if(!poRows.length){showToast('No valid rows found — check column names','red');return;}
     // Preview
+    window._pendingPOSyncRows=poRows;
     if(previewEl){
       previewEl.style.display='';
-      previewEl.innerHTML=`<div style="background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;">
-        📋 <strong>${poRows.length} PO rows</strong> ready to import.<br>
-        Sample: ${poRows.slice(0,3).map(r=>`${r.item_code} / SO ${r.so_number||'—'} / qty ${r.qty_on_order} / eta ${r.earliest_eta||'—'}`).join(' · ')}
-        <br><br>
-        <button onclick="commitPOSync()" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;font-size:13px;">✅ Confirm Import</button>
-      </div>`;
+      const wrap=document.createElement('div');
+      wrap.style.cssText='background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#1b5e20;';
+      wrap.innerHTML=`📋 <strong>${poRows.length} PO rows</strong> ready to import.<br>Sample: ${poRows.slice(0,3).map(r=>`${r.item_code} / SO ${r.so_number||'—'} / qty ${r.qty_on_order} / eta ${r.earliest_eta||'—'}`).join(' · ')}<br><br>`;
+      const btn=document.createElement('button');
+      btn.textContent='✅ Confirm Import';
+      btn.style.cssText='padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;font-size:13px;';
+      btn.addEventListener('click',commitPOSync);
+      wrap.appendChild(btn);
+      previewEl.innerHTML='';
+      previewEl.appendChild(wrap);
     }
-    window._pendingPOSyncRows=poRows;
     if(statusEl)statusEl.textContent=`${poRows.length} rows parsed. Review and confirm above.`;
   }catch(err){
     console.error(err);
