@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v16 — auto-refresh read-only (no merge on visibility)';
+  b.textContent='● v17 — merge server-side, loadAll read-only';
 }
 
 function lockActions(srcEl){
@@ -1341,18 +1341,9 @@ async function _loadAllImpl(){
     const {data:sd,error:se}=await sb.from('stations').select('*').order('started_at');
     if(se)throw se;
     lines=ld.map(l=>({...l,stations:sd.filter(s=>s.line_id===l.id)}));
-    // autoMerge: only run on user-triggered loads (not auto-refresh) to prevent
-    // repeated DB writes from causing ghost rows on background refreshes.
-    if(!skipMerge){
-      const healed=await autoMergeQueuePairs();
-      const partialed=await autoMergePartialPrep();
-      const folded=await autoMergeBackorders();
-      const orphaned=await autoMergeOrphanPrepQueue();
-      if(healed||partialed||folded||orphaned){
-        const {data:sd2}=await sb.from('stations').select('*').order('started_at');
-        if(sd2)lines=ld.map(l=>({...l,stations:sd2.filter(s=>s.line_id===l.id)}));
-      }
-    }
+    // autoMerge removed from loadAll — merge logic now runs server-side
+    // inside rpc_done_station and rpc_take_station (atomic, race-safe).
+    // loadAll is now read-only: no DB writes, safe to call from auto-refresh.
     rebuildJobs();rebuildQueue();
     setSyncDot('ok');
     renderWorker();renderQueue();
