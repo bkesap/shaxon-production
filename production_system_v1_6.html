@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v18 — fresh load before shift-resume';
+  b.textContent='● v19 — shift-start localStorage guard';
 }
 
 function lockActions(srcEl){
@@ -5901,8 +5901,11 @@ async function checkShiftEnd(){
   }
 
   // ── Shift STARTED → resume all paused jobs
-  if(si.isActive&&!shiftStartNotified){
+  // localStorage key prevents re-firing on page reload within the same day
+  const _shiftStartKey='shaxon_shift_started_'+new Date().toDateString();
+  if(si.isActive&&!shiftStartNotified&&!localStorage.getItem(_shiftStartKey)){
     shiftStartNotified=true;
+    localStorage.setItem(_shiftStartKey,'1');
     shiftEndNotified=false;
     // Always fetch fresh data before resuming — stale jobs[] causes done
     // stations (done_at set) to be re-activated if the device was closed and
