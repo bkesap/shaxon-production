@@ -948,7 +948,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v17 — merge server-side, loadAll read-only';
+  b.textContent='● v18 — fresh load before shift-resume';
 }
 
 function lockActions(srcEl){
@@ -5904,11 +5904,10 @@ async function checkShiftEnd(){
   if(si.isActive&&!shiftStartNotified){
     shiftStartNotified=true;
     shiftEndNotified=false;
-    // Guard: only resume GENUINELY-paused jobs. A done_at-carrying "paused"
-    // ghost (duplicate-take that never closed) must NOT be auto-resumed —
-    // doing so re-stamps started_at to now and resurrects a finished order
-    // back into Part Pull/Cutting (the "every morning we're back to start"
-    // bug). Mirrors the same guard in resumeJob_impl.
+    // Always fetch fresh data before resuming — stale jobs[] causes done
+    // stations (done_at set) to be re-activated if the device was closed and
+    // re-opened mid-shift (the "resurrection" bug).
+    await loadAll('user');
     const pausedJobs=jobs.filter(j=>j.state==='paused'&&!j.doneAt);
     if(pausedJobs.length>0){
       setSyncDot('syncing');
@@ -5916,7 +5915,7 @@ async function checkShiftEnd(){
         for(const j of pausedJobs){
           await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId);
         }
-        await loadAll();
+        await loadAll('user');
         showToast('▶ Shift started — '+pausedJobs.length+' job(s) resumed / Ca bat dau','green');
       }catch(e){setSyncDot('error');}
     } else {
