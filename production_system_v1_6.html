@@ -992,7 +992,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v26 — Labor: card scan + all-teams guard';
+  b.textContent='● v27 — Labor: card scan UI redesign';
 }
 
 function lockActions(srcEl){
@@ -6794,38 +6794,95 @@ async function refreshLaborModal(){
         <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">⏹ Stop</button>
       </div>`;
     });
-    html+='<div style="height:10px;border-top:1px solid var(--bdr3);margin:8px 0;"></div>';
+    html+=`<button onclick="laborShowAddPerson()" id="laborAddBtn"
+      style="width:100%;padding:9px;background:var(--bg2);color:var(--txt2);border:1.5px dashed var(--bdr2);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;margin-bottom:8px;">
+      ➕ Add person / Them nguoi
+    </button>`;
+    html+='<div id="laborAddArea" style="display:none;"></div>';
   }
 
-  // Card scan input — USB HID reader types UID, or manual entry
-  html+=`<div><div style="font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Scan Card or Select / Quet the hoac chon</div>
-    <input id="laborCardScan" type="text" placeholder="📷 Scan RFID card..." autocomplete="off"
-      style="width:100%;padding:9px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);margin-bottom:6px;font-family:var(--font);letter-spacing:.05em;"
+  // Card scan area — tap to focus, RFID bridge types UID
+  html+=`<div id="laborScanArea">
+    <div id="laborScanPrompt" onclick="document.getElementById('laborCardScan').focus()"
+      style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:18px 12px;border:2px dashed var(--bdr2);border-radius:12px;cursor:pointer;background:var(--bg2);margin-bottom:8px;transition:border-color .15s;"
+      onmouseenter="this.style.borderColor='var(--blue)'" onmouseleave="this.style.borderColor='var(--bdr2)'">
+      <span style="font-size:28px;">📲</span>
+      <span style="font-size:13px;font-weight:600;color:var(--txt1);">Scan Card / Quet the</span>
+      <span style="font-size:11px;color:var(--txt3);">Hold card to reader — or tap to type UID</span>
+    </div>
+    <input id="laborCardScan" type="text" autocomplete="off"
+      style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"
       oninput="laborScanInput(this.value)"/>
-    <div id="laborWorkerFound" style="font-size:13px;color:var(--txt2);min-height:20px;margin-bottom:6px;"></div>
-    <select id="laborWorkerSel" style="width:100%;padding:9px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);margin-bottom:8px;font-family:var(--font);">
-      <option value="">-- Select worker --</option>
+    <div id="laborWorkerFound" style="min-height:0;"></div>
+    <select id="laborWorkerSel" style="display:none;">
+      <option value=""></option>
       ${workersList.map(w=>`<option value="${w.id}">${w.name} (${w.team})</option>`).join('')}
     </select>
-    <button onclick="laborStartAction()" style="width:100%;padding:10px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">▶ Start / Bat dau</button>
   </div>`;
 
   body.innerHTML=html;
+  setTimeout(()=>{const inp=document.getElementById('laborCardScan');if(inp)inp.focus();},100);
 }
 
 function laborScanInput(val){
   const uid=val.trim().toUpperCase().replace(/\s/g,'');
   const found=document.getElementById('laborWorkerFound');
   const sel=document.getElementById('laborWorkerSel');
-  if(!uid){if(found)found.textContent='';return;}
+  const prompt=document.getElementById('laborScanPrompt');
+  if(!uid){
+    if(found)found.innerHTML='';
+    if(prompt)prompt.style.display='flex';
+    return;
+  }
   const w=workersList.find(x=>x.uid.toUpperCase()===uid||x.uid.toUpperCase().replace(/\s/g,'')===uid);
   if(w){
-    if(found)found.innerHTML=`✅ <strong>${w.name}</strong> (${w.team})`;
     if(sel)sel.value=String(w.id);
+    if(prompt)prompt.style.display='none';
+    if(found)found.innerHTML=`
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--green-lt,#E8F5E9);border:1.5px solid var(--green);border-radius:10px;margin-bottom:8px;">
+        <span style="font-size:24px;">👤</span>
+        <div style="flex:1;">
+          <div style="font-size:15px;font-weight:700;color:var(--txt1);">${w.name}</div>
+          <div style="font-size:12px;color:var(--txt2);">${w.team} &nbsp;·&nbsp; ${_laborModalLabel||''}</div>
+        </div>
+        <span style="font-size:18px;color:var(--green);">✓</span>
+      </div>
+      <button onclick="laborStartAction()" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.02em;">▶ Start / Bat dau</button>
+      <button onclick="laborClearScan()" style="width:100%;padding:7px;background:none;color:var(--txt3);border:none;font-size:12px;cursor:pointer;margin-top:4px;">↩ Scan different card</button>`;
   } else {
-    if(found)found.innerHTML=`<span style="color:var(--red);">❌ Card not found</span>`;
     if(sel)sel.value='';
+    if(prompt)prompt.style.display='none';
+    if(found)found.innerHTML=`
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#FFF3F3;border:1.5px solid var(--red);border-radius:10px;margin-bottom:8px;">
+        <span style="font-size:20px;">❌</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--red);">Card not found / Khong tim thay the</div>
+          <div style="font-size:11px;color:var(--txt3);">UID: ${uid}</div>
+        </div>
+      </div>
+      <button onclick="laborClearScan()" style="width:100%;padding:9px;background:var(--bg2);color:var(--txt1);border:1px solid var(--bdr2);border-radius:var(--r-md);font-size:13px;cursor:pointer;">↩ Try again / Thu lai</button>`;
   }
+}
+
+function laborShowAddPerson(){
+  const btn=document.getElementById('laborAddBtn');
+  const area=document.getElementById('laborAddArea');
+  const scanArea=document.getElementById('laborScanArea');
+  if(btn)btn.style.display='none';
+  if(area&&scanArea){area.appendChild(scanArea);area.style.display='block';}
+  setTimeout(()=>{const inp=document.getElementById('laborCardScan');if(inp)inp.focus();},50);
+}
+
+function laborClearScan(){
+  const inp=document.getElementById('laborCardScan');
+  const found=document.getElementById('laborWorkerFound');
+  const prompt=document.getElementById('laborScanPrompt');
+  const sel=document.getElementById('laborWorkerSel');
+  if(inp)inp.value='';
+  if(found)found.innerHTML='';
+  if(sel)sel.value='';
+  if(prompt)prompt.style.display='flex';
+  setTimeout(()=>{if(inp)inp.focus();},50);
 }
 
 async function laborStartAction(){
