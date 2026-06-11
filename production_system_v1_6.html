@@ -698,6 +698,20 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
 </div>
 
+<!-- ══ LABOR MODAL ══ -->
+<div class="modal-overlay" id="laborModal">
+  <div class="modal-box">
+    <div class="modal-hdr blue">
+      <div class="modal-title" id="laborModalTitle">Labor Tracking</div>
+      <div class="modal-sub">Hold 0.5s on any job card to open / Giu 0.5 giay tren the cong viec</div>
+    </div>
+    <div class="modal-body" id="laborModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('laborModal')">Close / Dong</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ CHAT ══ -->
 <div class="page" id="page-chat">
   <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
@@ -978,7 +992,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v24 — Analytics compact table';
+  b.textContent='● v25 — Labor tracking (long press)';
 }
 
 function lockActions(srcEl){
@@ -2679,7 +2693,7 @@ function renderWorker(){
     const actionRow=(actBtns||doneBtn||noteBtn)?`<div class="action-row">${actBtns}${noteBtn}${doneBtn}</div>`:'';
     const hint=isFinal&&!isAll&&!isWaiting?`<div class="complete-hint">DONE = ORDER COMPLETE / Hoan thanh toan bo</div>`:'';
 
-    return `<div class="job-card ${cardCls}">
+    return `<div class="job-card ${cardCls}" data-station-id="${j.stationId}" data-label="${j.so} · ${j.item}" oncontextmenu="return false;">
       <div class="sl ${slCls}"></div>
       <div class="jc-so">${j.so}</div>
       ${teamTag}
@@ -2694,6 +2708,11 @@ function renderWorker(){
       ${actionRow}${hint}
     </div>`;
   }).join('');
+
+  // Attach long press to each job card
+  jl.querySelectorAll('.job-card[data-station-id]').forEach(el=>{
+    attachLongPress(el,el.dataset.stationId,el.dataset.label||'');
+  });
 }
 
 function renderDonePanel(){
@@ -4141,6 +4160,8 @@ let inventoryPoMap=new Map();  // item_code -> [{so_number, qty_on_order, earlie
 let soMetaMap=new Map();       // so_number -> {ship_date, customer, priority, sales_person, last_synced}
 let scheduleNotesMap=new Map();// line_id -> {note, updated_at}
 let stationHeadcountMap=new Map();// team_name -> {people_count, updated_at}
+let workersList=[];// [{id, uid, name, team}]
+let laborSessions={};// stationId -> [{session}]
 
 async function loadInventoryAndSO(){
   try{
@@ -6650,7 +6671,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v24 — Analytics compact table';
+const BUILD_TAG  = 'v25 — Labor tracking (long press)';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -6679,6 +6700,137 @@ async function init(){
   document.getElementById('connOverlay').classList.add('hidden');
   setInterval(tick,1000);
   if(!deviceName)setTimeout(ensureDeviceName,800);
+  loadWorkers();
+}
+
+async function loadWorkers(){
+  try{
+    const {data}=await sb.from('workers').select('id,uid,name,team').eq('active',true).order('name');
+    if(data)workersList=data;
+  }catch(e){console.warn('loadWorkers error:',e);}
+}
+
+async function loadLaborSessions(stationId){
+  try{
+    const {data}=await sb.from('labor_sessions').select('*').eq('station_id',stationId).in('status',['active','paused']).order('started_at');
+    laborSessions[stationId]=data||[];
+  }catch(e){console.warn('loadLaborSessions error:',e);}
+  return laborSessions[stationId]||[];
+}
+
+async function laborStart(stationId,workerId){
+  const now=new Date().toISOString();
+  const{data,error}=await sb.from('labor_sessions').insert({station_id:stationId,worker_id:workerId,started_at:now,status:'active'}).select().single();
+  if(error)throw error;
+  return data;
+}
+
+async function laborPause(sessionId){
+  const now=new Date().toISOString();
+  await sb.from('labor_sessions').update({status:'paused',paused_at:now}).eq('id',sessionId);
+}
+
+async function laborResume(sessionId,totalPauseMs){
+  await sb.from('labor_sessions').update({status:'active',paused_at:null,total_pause_ms:totalPauseMs}).eq('id',sessionId);
+}
+
+async function laborStop(sessionId,totalPauseMs){
+  const now=new Date().toISOString();
+  await sb.from('labor_sessions').update({status:'stopped',ended_at:now,paused_at:null,total_pause_ms:totalPauseMs}).eq('id',sessionId);
+}
+
+// Long press state
+let _lpTimer=null;
+let _lpTarget=null;
+function attachLongPress(el,stationId,label){
+  const start=e=>{
+    _lpTarget=stationId;
+    _lpTimer=setTimeout(()=>{openLaborModal(stationId,label);},500);
+  };
+  const cancel=()=>{if(_lpTimer){clearTimeout(_lpTimer);_lpTimer=null;}};
+  el.addEventListener('touchstart',start,{passive:true});
+  el.addEventListener('touchend',cancel);
+  el.addEventListener('touchmove',cancel);
+  el.addEventListener('mousedown',start);
+  el.addEventListener('mouseup',cancel);
+  el.addEventListener('mouseleave',cancel);
+}
+
+let _laborModalStationId=null;
+let _laborModalLabel=null;
+
+async function openLaborModal(stationId,label){
+  _laborModalStationId=stationId;
+  _laborModalLabel=label;
+  document.getElementById('laborModalTitle').textContent=label;
+  document.getElementById('laborModalBody').innerHTML='<div style="text-align:center;color:var(--txt3);padding:16px;">Loading...</div>';
+  document.getElementById('laborModal').classList.add('open');
+  await refreshLaborModal();
+}
+
+async function refreshLaborModal(){
+  const stationId=_laborModalStationId;
+  const sessions=await loadLaborSessions(stationId);
+  const body=document.getElementById('laborModalBody');
+  const now=Date.now();
+
+  let html='';
+  if(sessions.length){
+    html+='<div style="margin-bottom:10px;font-size:12px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Active Workers / Nhan vien</div>';
+    sessions.forEach(s=>{
+      const w=workersList.find(x=>x.id===s.worker_id)||{name:'Unknown'};
+      const elapsed=s.status==='active'?now-new Date(s.started_at).getTime():(s.paused_at?new Date(s.paused_at).getTime()-new Date(s.started_at).getTime():0);
+      const netMs=Math.max(0,elapsed-(s.total_pause_ms||0));
+      const isPaused=s.status==='paused';
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:8px;margin-bottom:6px;">
+        <span style="font-size:13px;font-weight:500;flex:1;color:var(--txt1);">👤 ${w.name}</span>
+        <span style="font-size:11px;color:var(--txt2);">${formatMs(netMs)}</span>
+        ${isPaused
+          ?`<button onclick="laborResumeAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:6px;cursor:pointer;">▶ Resume</button>`
+          :`<button onclick="laborPauseAction(${s.id})" style="padding:4px 10px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid #FFCC80;border-radius:6px;cursor:pointer;">⏸ Pause</button>`
+        }
+        <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">⏹ Stop</button>
+      </div>`;
+    });
+  }
+
+  html+=`<div style="margin-top:${sessions.length?'10px':'0'};"><div style="font-size:12px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Add Worker / Them nhan vien</div>
+    <select id="laborWorkerSel" style="width:100%;padding:9px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);margin-bottom:8px;font-family:var(--font);">
+      <option value="">-- Select worker --</option>
+      ${workersList.map(w=>`<option value="${w.id}">${w.name} (${w.team})</option>`).join('')}
+    </select>
+    <button onclick="laborStartAction()" style="width:100%;padding:10px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">▶ Start / Bat dau</button>
+  </div>`;
+
+  body.innerHTML=html;
+}
+
+async function laborStartAction(){
+  const sel=document.getElementById('laborWorkerSel');
+  if(!sel||!sel.value){showToast('Select a worker first','red');return;}
+  try{
+    await laborStart(_laborModalStationId,parseInt(sel.value));
+    showToast('✅ Labor started');
+    await refreshLaborModal();
+  }catch(e){showToast('Error: '+e.message,'red');}
+}
+
+async function laborPauseAction(sessionId){
+  try{await laborPause(sessionId);showToast('⏸ Paused');await refreshLaborModal();}
+  catch(e){showToast('Error','red');}
+}
+
+async function laborResumeAction(sessionId,pauseMs){
+  const extra=Date.now()-(laborSessions[_laborModalStationId]?.find(s=>s.id===sessionId)?.paused_at?new Date(laborSessions[_laborModalStationId].find(s=>s.id===sessionId).paused_at).getTime():Date.now());
+  try{await laborResume(sessionId,pauseMs+Math.max(0,extra));showToast('▶ Resumed');await refreshLaborModal();}
+  catch(e){showToast('Error','red');}
+}
+
+async function laborStopAction(sessionId,pauseMs){
+  const s=laborSessions[_laborModalStationId]?.find(x=>x.id===sessionId);
+  const extra=s&&s.status==='paused'&&s.paused_at?Date.now()-new Date(s.paused_at).getTime():0;
+  try{await laborStop(sessionId,pauseMs+Math.max(0,extra));showToast('⏹ Stopped');await refreshLaborModal();}
+  catch(e){showToast('Error','red');}
 }
 
 document.addEventListener('DOMContentLoaded',function(){
