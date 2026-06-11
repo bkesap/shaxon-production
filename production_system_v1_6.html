@@ -992,7 +992,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v25 — Labor tracking (long press)';
+  b.textContent='● v26 — Labor: card scan + all-teams guard';
 }
 
 function lockActions(srcEl){
@@ -6671,7 +6671,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v25 — Labor tracking (long press)';
+const BUILD_TAG  = 'v26 — Labor: card scan + all-teams guard';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -6760,6 +6760,8 @@ let _laborModalStationId=null;
 let _laborModalLabel=null;
 
 async function openLaborModal(stationId,label){
+  // All Teams = readonly, no labor tracking
+  if(!currentTeam||currentTeam==='__ALL__')return;
   _laborModalStationId=stationId;
   _laborModalLabel=label;
   document.getElementById('laborModalTitle').textContent=label;
@@ -6776,15 +6778,15 @@ async function refreshLaborModal(){
 
   let html='';
   if(sessions.length){
-    html+='<div style="margin-bottom:10px;font-size:12px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Active Workers / Nhan vien</div>';
+    html+='<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Active Workers / Nhan vien</div>';
     sessions.forEach(s=>{
       const w=workersList.find(x=>x.id===s.worker_id)||{name:'Unknown'};
       const elapsed=s.status==='active'?now-new Date(s.started_at).getTime():(s.paused_at?new Date(s.paused_at).getTime()-new Date(s.started_at).getTime():0);
       const netMs=Math.max(0,elapsed-(s.total_pause_ms||0));
       const isPaused=s.status==='paused';
-      html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:8px;margin-bottom:6px;">
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;">
         <span style="font-size:13px;font-weight:500;flex:1;color:var(--txt1);">👤 ${w.name}</span>
-        <span style="font-size:11px;color:var(--txt2);">${formatMs(netMs)}</span>
+        <span style="font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums;">${formatMs(netMs)}</span>
         ${isPaused
           ?`<button onclick="laborResumeAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:6px;cursor:pointer;">▶ Resume</button>`
           :`<button onclick="laborPauseAction(${s.id})" style="padding:4px 10px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid #FFCC80;border-radius:6px;cursor:pointer;">⏸ Pause</button>`
@@ -6792,9 +6794,15 @@ async function refreshLaborModal(){
         <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">⏹ Stop</button>
       </div>`;
     });
+    html+='<div style="height:10px;border-top:1px solid var(--bdr3);margin:8px 0;"></div>';
   }
 
-  html+=`<div style="margin-top:${sessions.length?'10px':'0'};"><div style="font-size:12px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Add Worker / Them nhan vien</div>
+  // Card scan input — USB HID reader types UID, or manual entry
+  html+=`<div><div style="font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Scan Card or Select / Quet the hoac chon</div>
+    <input id="laborCardScan" type="text" placeholder="📷 Scan RFID card..." autocomplete="off"
+      style="width:100%;padding:9px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);margin-bottom:6px;font-family:var(--font);letter-spacing:.05em;"
+      oninput="laborScanInput(this.value)"/>
+    <div id="laborWorkerFound" style="font-size:13px;color:var(--txt2);min-height:20px;margin-bottom:6px;"></div>
     <select id="laborWorkerSel" style="width:100%;padding:9px 10px;font-size:14px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);margin-bottom:8px;font-family:var(--font);">
       <option value="">-- Select worker --</option>
       ${workersList.map(w=>`<option value="${w.id}">${w.name} (${w.team})</option>`).join('')}
@@ -6805,9 +6813,24 @@ async function refreshLaborModal(){
   body.innerHTML=html;
 }
 
+function laborScanInput(val){
+  const uid=val.trim().toUpperCase().replace(/\s/g,'');
+  const found=document.getElementById('laborWorkerFound');
+  const sel=document.getElementById('laborWorkerSel');
+  if(!uid){if(found)found.textContent='';return;}
+  const w=workersList.find(x=>x.uid.toUpperCase()===uid||x.uid.toUpperCase().replace(/\s/g,'')===uid);
+  if(w){
+    if(found)found.innerHTML=`✅ <strong>${w.name}</strong> (${w.team})`;
+    if(sel)sel.value=String(w.id);
+  } else {
+    if(found)found.innerHTML=`<span style="color:var(--red);">❌ Card not found</span>`;
+    if(sel)sel.value='';
+  }
+}
+
 async function laborStartAction(){
   const sel=document.getElementById('laborWorkerSel');
-  if(!sel||!sel.value){showToast('Select a worker first','red');return;}
+  if(!sel||!sel.value){showToast('Select a worker / Quet the hoac chon','red');return;}
   try{
     await laborStart(_laborModalStationId,parseInt(sel.value));
     showToast('✅ Labor started');
