@@ -4823,14 +4823,38 @@ async function commitPOSync(){
 
 
 function shipCodeToAgentService(code){
-  const c=String(code||'').trim();
-  // NEXT DAY codes
-  const nextDay=new Set(['105','106','107','204','205','210','FED1DS','UPS1D','UPS1DS']);
-  // PRIORITY codes (2-3 day, express)
-  const priority=new Set(['102','103','104','202','203','217','305','306','307','309','UPS2DC','UPS2DR','UPS2DS','UPS3DS','USPSPM']);
+  const c=String(code||'').trim().toUpperCase();
+  const nextDay=new Set([
+    '105','106','107',              // UPS Next Day Air (Saver/Red/Early AM)
+    '204','205','210',              // FedEx Std Overnight, Priority Overnight, First Overnight
+    'FED1DST',                      // FedEx Standard Overnight (alt code)
+    'UPS1D','UPS1DSA','UPS1DSVS',  // UPS Next Day Air variants
+  ]);
+  const priority=new Set([
+    '102','103','104',              // UPS 2-Day/3-Day/2-Day AM
+    '202','203','217',              // FedEx Exp Saver, 2Day, 2Day AM
+    '208','209',                    // FedEx Int'l Economy/Priority
+    '305','306','309','310',        // USPS Express/Priority/Int'l Express
+    '312','313','314',              // USPS Int'l Priority/First/Priority
+    'FED2D',                        // FedEx 2Day (alt code)
+    'UPS2DCOI','UPS2DRES','UPS2DSIG', // UPS 2-Day variants
+    'UPS3DSEL',                     // UPS 3-Day Select
+    'USPSPM',                       // USPS Priority Mail
+  ]);
+  const ground=new Set([
+    '101','201','206',              // UPS Ground, FedEx Ground, FedEx Home Delivery
+    '212','213','214','215','216',  // FedEx Freight
+    '301','302','303','304',        // USPS First/Ground/Media/Parcel
+    '501','PICKUP',                 // Will Call / Pickup
+    'FEDGR',                        // FedEx Ground (alt code)
+    'UPSG','UPSGCOM','UPSGRES',     // UPS Ground variants
+    '507',                          // NuMark Freight
+  ]);
   if(nextDay.has(c))return 'NEXT DAY';
   if(priority.has(c))return 'PRIORITY';
-  return 'GROUND';
+  if(ground.has(c))return 'GROUND';
+  // Unknown code — return as-is so it still shows as a badge
+  return c||'GROUND';
 }
 
 async function handleSOFile(event){
@@ -6919,7 +6943,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v44 — worker names on job cards';
+const BUILD_TAG  = 'v45 — full shipment code mapping';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
