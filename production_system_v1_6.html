@@ -6528,8 +6528,14 @@ async function checkNewVersion(){
     const txt=await r.text();
     const m=txt.match(/BUILD_TAG\s*=\s*'([^']+)'/);
     if(m&&m[1]&&m[1]!==BUILD_TAG){
-      showToast('🔄 New version available — reloading / Cap nhat moi...','blue');
-      setTimeout(()=>location.reload(true),2500);
+      // Don't reload if jobs are active on this device
+      const hasActive=jobs&&jobs.some(j=>j.state==='active'||j.state==='paused');
+      if(hasActive){
+        showToast('🔄 New version ready — reload when free / Cap nhat san sang','blue');
+      } else {
+        showToast('🔄 New version — reloading / Cap nhat moi...','blue');
+        setTimeout(()=>location.reload(true),2500);
+      }
     }
   }catch(e){}
 }
@@ -6893,7 +6899,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v37 — finish card verify + button style + alignment';
+const BUILD_TAG  = 'v38 — no reload during active jobs';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
