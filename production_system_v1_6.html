@@ -6496,10 +6496,24 @@ async function handleBulkStart_impl(){
 }
 
 // ── TICK ──────────────────────────────────────────────────────────────────────
+let _verCheckAt=0;
+async function checkNewVersion(){
+  try{
+    const r=await fetch('https://raw.githubusercontent.com/bkesap/shaxon-production/main/production_system_v1_6.html?_='+Date.now());
+    const txt=await r.text();
+    const m=txt.match(/BUILD_TAG\s*=\s*'([^']+)'/);
+    if(m&&m[1]&&m[1]!==BUILD_TAG){
+      showToast('🔄 New version available — reloading / Cap nhat moi...','blue');
+      setTimeout(()=>location.reload(true),2500);
+    }
+  }catch(e){}
+}
 function tick(){
   updateClock();
   updateShiftBar();
   checkShiftEnd();
+  // version check every 10 min
+  if(Date.now()-_verCheckAt>600000){_verCheckAt=Date.now();checkNewVersion();}
   if(jobs.some(j=>j.state==='active')){
     renderWorker();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
@@ -6854,7 +6868,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v30 — tap-ring scan UI + dup guard + zombie fix + labor tab';
+const BUILD_TAG  = 'v31 — auto-update + tap-ring UI + dup guard + zombie fix + labor tab';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
