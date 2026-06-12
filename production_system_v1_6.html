@@ -3333,12 +3333,10 @@ async function renderLaborTime(){
     else if(dateFilter==='week'){const d=new Date(now);d.setDate(d.getDate()-7);since=d.toISOString();}
     // fetch labor sessions with worker + station + line
     const q=since?`started_at=gte.${since}`:'';
-    const [sessRes,stRes]=await Promise.all([
-      sb.from('labor_sessions').select('id,worker_id,station_id,started_at,ended_at,total_pause_ms,status').order('started_at',{ascending:false}).limit(2000)
-        .then(r=>r.data||[]),
-      sb.from('stations').select('id,line_id,grp,state,started_at,done_at,elapsed_ms,sent_qty').limit(5000)
-        .then(r=>r.data||[])
-    ]);
+    const sessRes=(await sb.from('labor_sessions').select('id,worker_id,station_id,started_at,ended_at,total_pause_ms,status').order('started_at',{ascending:false}).limit(2000)).data||[];
+    // Fetch only stations referenced in sessions
+    const stIds=[...new Set(sessRes.map(s=>s.station_id).filter(Boolean))];
+    const stRes=stIds.length?(await sb.from('stations').select('id,line_id,grp,state,started_at,done_at,elapsed_ms,sent_qty').in('id',stIds)).data||[]:[];
     // build maps
     const stMap=Object.fromEntries(stRes.map(s=>[s.id,s]));
     const wMap=Object.fromEntries((workersList||[]).map(w=>[w.id,w]));
@@ -6895,7 +6893,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v34 — labor tab allLines fix';
+const BUILD_TAG  = 'v36 — labor station fetch fix';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7015,7 +7013,7 @@ async function refreshLaborModal(){
           ?`<button onclick="laborResumeAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:6px;cursor:pointer;">▶ Resume</button>`
           :`<button onclick="laborPauseAction(${s.id})" style="padding:4px 10px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid #FFCC80;border-radius:6px;cursor:pointer;">⏸ Pause</button>`
         }
-        <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">⏹ Stop</button>
+        <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">✓ Finish / Xong</button>
       </div>`;
     });
     html+=`<button onclick="laborShowAddPerson()" id="laborAddBtn"
