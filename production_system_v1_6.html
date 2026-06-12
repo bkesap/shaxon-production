@@ -1416,7 +1416,7 @@ async function _loadAllImpl(){
     // loadAll is now read-only: no DB writes, safe to call from auto-refresh.
     rebuildJobs();rebuildQueue();
     setSyncDot('ok');
-    renderWorker();renderQueue();
+    loadActiveWorkers().then(()=>{renderWorker();renderQueue();});
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
     if(document.getElementById('page-admin').classList.contains('active'))renderAdmin();
     if(document.getElementById('page-flow')?.classList.contains('active'))renderProductionFlow();
@@ -2730,6 +2730,7 @@ function renderWorker(){
       ${noteDisp}
       ${!isWaiting?`<div class="timer-box"><span class="dot ${dotCls}"></span><span class="timer">${formatMs(el)}</span>${stateTag}</div>`:''}
       ${actionRow}${hint}
+      ${(()=>{const ws=activeWorkersByStation[j.stationId];return ws&&ws.length?'<div style="font-size:10px;color:var(--txt3);margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr3);">👤 '+ws.join(', ')+'</div>':'';})()}
     </div>`;
   }).join('');
 
@@ -4356,6 +4357,25 @@ let scheduleNotesMap=new Map();// line_id -> {note, updated_at}
 let stationHeadcountMap=new Map();// team_name -> {people_count, updated_at}
 let workersList=[];// [{id, uid, name, team}]
 let laborSessions={};// stationId -> [{session}]
+let activeWorkersByStation={};// stationId -> [workerName, ...]
+
+async function loadActiveWorkers(){
+  try{
+    const {data}=await sb.from('labor_sessions')
+      .select('station_id,worker_id,status')
+      .in('status',['active','paused']);
+    activeWorkersByStation={};
+    if(data){
+      data.forEach(s=>{
+        const w=workersList.find(x=>x.id===s.worker_id);
+        if(!w)return;
+        if(!activeWorkersByStation[s.station_id])activeWorkersByStation[s.station_id]=[];
+        if(!activeWorkersByStation[s.station_id].includes(w.name))
+          activeWorkersByStation[s.station_id].push(w.name);
+      });
+    }
+  }catch(e){}
+}
 
 async function loadInventoryAndSO(){
   try{
@@ -6899,7 +6919,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v42 — finish card uid length fix';
+const BUILD_TAG  = 'v43 — worker names on job cards';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
