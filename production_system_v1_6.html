@@ -6899,7 +6899,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v39 — finish card via main scan input';
+const BUILD_TAG  = 'v40 — finish card debounce fix';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7059,8 +7059,12 @@ async function refreshLaborModal(){
 function laborScanInput(val){
   // Route to finish verification if awaiting finish card scan
   if(_finishSession){
-    const {sessionId,totalPauseMs,workerId}=_finishSession;
-    laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId);
+    const uid=(val||'').trim().toUpperCase().replace(/\s/g,'');
+    if(uid.length>=10){  // wait for complete UID
+      const {sessionId,totalPauseMs,workerId}=_finishSession;
+      laborVerifyFinishCard(uid,sessionId,totalPauseMs,workerId);
+      const inp=document.getElementById('laborCardScan');if(inp)inp.value='';
+    }
     return;
   }
   const uid=val.trim().toUpperCase().replace(/\s/g,'');
@@ -7175,10 +7179,8 @@ function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
     setTimeout(()=>laborStopAction(sessionId,totalPauseMs),400);
   } else if(scanned){
     if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
-    const inp=document.getElementById('laborCardScan');if(inp)inp.value='';
   } else {
     if(msg)msg.innerHTML='<span style="color:var(--red);">❌ Card not found / Khong tim thay</span>';
-    const inp=document.getElementById('laborCardScan');if(inp)inp.value='';
   }
 }
 
