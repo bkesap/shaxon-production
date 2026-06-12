@@ -3715,8 +3715,7 @@ async function adminUpdateSO(){
   if(!shipDate){if(status)status.textContent='⚠️ Enter ship date';return;}
   if(status)status.textContent='Saving...';
   try{
-    const agent=document.getElementById('soEditAgent')?.value||'GROUND';
-    const payload={so_number:soNum,ship_date:shipDate,agent_service:agent};
+    const payload={so_number:soNum,ship_date:shipDate};
     if(sales)payload.sales_person=sales;
     await sb.from('sales_orders_meta').upsert(payload,{onConflict:'so_number'});
     const ex=soMetaMap.get(soNum)||{};
@@ -4183,8 +4182,7 @@ function renderAdmin(){
             <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">SO Number</label><input id="soEditNum" type="text" placeholder="e.g. 811396" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:monospace;width:130px;background:var(--bg1);color:var(--txt1);" autocomplete="off"/></div>
             <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">Ship Date</label><input id="soEditDate" type="date" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);"/></div>
             <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">Sales Person</label><input id="soEditSales" type="text" placeholder="optional" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);width:120px;background:var(--bg1);color:var(--txt1);" autocomplete="off"/></div>
-            <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">Agent Service</label><select id="soEditAgent" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);"><option value="GROUND">GROUND</option><option value="PRIORITY">PRIORITY</option><option value="NEXT DAY">NEXT DAY</option></select></div>
-            <button onclick="adminUpdateSO()" style="padding:8px 16px;font-size:13px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;height:36px;">✓ Save SO</button>
+<button onclick="adminUpdateSO()" style="padding:8px 16px;font-size:13px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;height:36px;">✓ Save SO</button>
           </div>
           <div id="soEditStatus" style="font-size:12px;color:var(--txt3);"></div>
           <div style="border-top:1px solid var(--bdr3);padding-top:10px;">
@@ -6921,7 +6919,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v44 — SO edit agent service + worker cards';
+const BUILD_TAG  = 'v44 — worker names on job cards';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
