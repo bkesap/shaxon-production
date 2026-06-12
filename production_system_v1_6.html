@@ -1758,6 +1758,7 @@ function setupRealtime(){
   sb.channel('shaxon-prod-v21')
     .on('postgres_changes',{event:'*',schema:'public',table:'lines'},()=>scheduleLoadAll())
     .on('postgres_changes',{event:'*',schema:'public',table:'stations'},()=>scheduleLoadAll())
+    .on('postgres_changes',{event:'*',schema:'public',table:'sales_orders_meta'},()=>scheduleLoadAll())
     .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},(payload)=>{
       // Global shift times changed on ANOTHER device → apply instantly here.
       // Supabase is the single source of truth; no per-device localStorage drift.
@@ -6568,6 +6569,7 @@ async function handleBulkStart_impl(){
 
 // ── TICK ──────────────────────────────────────────────────────────────────────
 let _verCheckAt=0;
+let _pollAt=0;
 async function checkNewVersion(){
   try{
     const r=await fetch('https://raw.githubusercontent.com/bkesap/shaxon-production/main/production_system_v1_6.html?_='+Date.now());
@@ -6591,6 +6593,8 @@ function tick(){
   checkShiftEnd();
   // version check every 10 min
   if(Date.now()-_verCheckAt>600000){_verCheckAt=Date.now();checkNewVersion();}
+  // Fallback poll every 60s — ensures other devices see updates even if Supabase Realtime is off
+  if(Date.now()-_pollAt>60000){_pollAt=Date.now();scheduleLoadAll();}
   if(jobs.some(j=>j.state==='active')){
     renderWorker();
     if(document.getElementById('page-dash').classList.contains('active'))renderDash();
@@ -6945,7 +6949,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v46 — agent service in SO preview + full code map';
+const BUILD_TAG  = 'v47 — 60s auto-refresh + SO meta realtime';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
