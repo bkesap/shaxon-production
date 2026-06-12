@@ -6899,7 +6899,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v40 — finish card debounce fix';
+const BUILD_TAG  = 'v41 — finish card debug UID';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7180,7 +7180,7 @@ function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
   } else if(scanned){
     if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
   } else {
-    if(msg)msg.innerHTML='<span style="color:var(--red);">❌ Card not found / Khong tim thay</span>';
+    if(msg)msg.innerHTML='<span style="color:var(--red);">❌ Card not found: '+uid+'</span>';
   }
 }
 
