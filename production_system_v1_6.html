@@ -2719,7 +2719,7 @@ function renderWorker(){
 
     return `<div class="job-card ${cardCls}" data-station-id="${j.stationId}" data-label="${j.so} · ${j.item}" oncontextmenu="return false;">
       <div class="sl ${slCls}"></div>
-      <div class="jc-so">${j.so}</div>
+      <div class="jc-so">${j.so}${(()=>{const m=soMetaMap.get(String(j.so).toUpperCase());const sv=m&&m.agent_service;return sv&&sv!=='GROUND'?`<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:5px;background:${sv==='NEXT DAY'?'#FFEBEE':'#FFF3E0'};color:${sv==='NEXT DAY'?'#c62828':'#e65100'};">${sv}</span>`:'';})()}</div>
       ${teamTag}
       <div class="jc-divider"></div>
       <div class="jc-row">
@@ -3150,21 +3150,29 @@ function renderSchedule(){
     const noteEscaped=String(noteRaw).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const notesCell=`<textarea class="sched-note-input" data-line-id="${l.id}" placeholder="Add note..." onblur="saveScheduleNote(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.blur();}" rows="1">${noteEscaped}</textarea>`;
 
+    // Agent Service
+    const agentSvc=(it.ship&&it.ship.agent_service)||'GROUND';
+    const agentColor=agentSvc==='NEXT DAY'?'#c62828':agentSvc==='PRIORITY'?'#e65100':'#2e7d32';
+    const agentBg=agentSvc==='NEXT DAY'?'#FFEBEE':agentSvc==='PRIORITY'?'#FFF3E0':'#E8F5E9';
+    const agentCell=`<select onchange="saveAgentService('${l.so}',this.value)" style="font-size:11px;padding:3px 6px;border-radius:5px;border:1px solid ${agentColor};background:${agentBg};color:${agentColor};font-weight:600;cursor:pointer;">
+      <option value="GROUND"${agentSvc==='GROUND'?' selected':''}>GROUND</option>
+      <option value="PRIORITY"${agentSvc==='PRIORITY'?' selected':''}>PRIORITY</option>
+      <option value="NEXT DAY"${agentSvc==='NEXT DAY'?' selected':''}>NEXT DAY</option>
+    </select>`;
+    const agentBadge=agentSvc!=='GROUND'?`<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:${agentBg};color:${agentColor};margin-left:4px;font-weight:700;vertical-align:middle;">${agentSvc}</span>`:'';
+
     let rowBg='';
-    if(it.matStatus.level==='short'||ss.level==='late')rowBg='background:#FFF5F5;';
-    else if(it.matStatus.level==='po'||ss.level==='urgent')rowBg='background:#FFFBEB;';
+    if(agentSvc==='NEXT DAY')rowBg='background:#FFF5F5;border-left:3px solid #c62828;';
+    else if(agentSvc==='PRIORITY')rowBg='background:#FFF8F0;border-left:3px solid #e65100;';
+    else if(ss.level==='late')rowBg='background:#FFF5F5;';
+    else if(ss.level==='urgent')rowBg='background:#FFFBEB;';
 
     return {rowBg,cells:{
-      so:`<td style="font-weight:600;color:var(--blue);">${l.so}</td>`,
+      so:`<td style="font-weight:600;color:var(--blue);">${l.so}${agentBadge}</td>`,
       item:`<td class="col-item" title="${l.item}">${l.item}</td>`,
       qty:`<td style="font-weight:500;white-space:nowrap;">${l.qty}</td>`,
       team:`<td>${teamPill}</td>`,
-      mat:`<td>${matCode}</td>`,
-      special:`<td>${specialCell}</td>`,
-      onhand:`<td style="text-align:right;">${onHandCell}</td>`,
-      onorder:`<td style="text-align:right;">${onOrderCell}</td>`,
-      eta:`<td>${etaCell}</td>`,
-      status:`<td>${statusCell}</td>`,
+      agentsvc:`<td>${agentCell}</td>`,
       ship:`<td>${shipCell}</td>`,
       salesperson:`<td>${salesCell}</td>`,
       notes:`<td>${notesCell}</td>`
@@ -3179,20 +3187,16 @@ function renderSchedule(){
   // User can reorder via drag-drop and resize via column-edge handles.
   // The order is persisted to localStorage so it survives reloads.
   const COL_DEFS={
-    so:         {label:'SO',           align:'left',  width:90},
-    item:       {label:'Item',         align:'left',  width:180},
-    qty:        {label:'Qty',          align:'left',  width:70},
-    team:       {label:'Current Step', align:'left',  width:120},
-    mat:        {label:'Material',     align:'left',  width:140},
-    special:    {label:'Special Order',align:'left',  width:110},
-    onhand:     {label:'On Hand',      align:'right', width:90},
-    onorder:    {label:'On PO',        align:'right', width:90},
-    eta:        {label:'ETA',          align:'left',  width:90},
-    ship:       {label:'Ship Date',    align:'left',  width:130},
-    salesperson:{label:'Sales Person', align:'left',  width:120},
-    notes:      {label:'Notes',        align:'left',  width:200}
+    so:         {label:'SO',            align:'left',  width:90},
+    item:       {label:'Item',          align:'left',  width:180},
+    qty:        {label:'Qty',           align:'left',  width:70},
+    team:       {label:'Current Step',  align:'left',  width:120},
+    agentsvc:   {label:'Agent Service', align:'left',  width:110},
+    ship:       {label:'Ship Date',     align:'left',  width:130},
+    salesperson:{label:'Sales Person',  align:'left',  width:120},
+    notes:      {label:'Notes',         align:'left',  width:200}
   };
-  const DEFAULT_ORDER=['so','item','qty','team','mat','special','onhand','onorder','eta','ship','salesperson','notes'];
+  const DEFAULT_ORDER=['so','item','qty','team','agentsvc','ship','salesperson','notes'];
   let colOrder=[];
   try{
     const saved=JSON.parse(localStorage.getItem('shaxon_sched_col_order')||'null');
@@ -3271,7 +3275,8 @@ function renderItemHistory(){
   lines.forEach(l=>{
     const key=l.item||'—';
     if(search&&!key.toUpperCase().includes(search))return;
-    if(!itemMap[key])itemMap[key]={item:key,elapsed:0,stationCount:0,soSet:new Set()};
+    if(!itemMap[key])itemMap[key]={item:key,elapsed:0,stationCount:0,soSet:new Set(),totalQty:0};
+    itemMap[key].totalQty+=parseQty(l.qty)||0;
     const entry=itemMap[key];
     entry.soSet.add(l.so);
     (l.stations||[]).forEach(s=>{
@@ -3292,7 +3297,9 @@ function renderItemHistory(){
     <thead>
       <tr style="background:var(--bg2);border-bottom:2px solid var(--bdr3);">
         <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Item No</th>
+        <th style="padding:9px 16px;text-align:right;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Total Qty</th>
         <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Total Elapsed</th>
+        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Per Unit</th>
         <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Stations</th>
         <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Orders (SO)</th>
       </tr>
@@ -3300,7 +3307,9 @@ function renderItemHistory(){
     <tbody>
       ${sorted.map((e,i)=>`<tr style="border-bottom:1px solid var(--bdr3);${i%2?'background:var(--bg2)':''}">
         <td style="padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--txt1);">${e.item}</td>
+        <td style="padding:9px 16px;text-align:right;color:var(--txt2);">${e.totalQty?e.totalQty.toLocaleString()+' pcs':'—'}</td>
         <td style="padding:9px 16px;font-weight:600;color:var(--blue);">${formatMs(e.elapsed)}</td>
+        <td style="padding:9px 16px;color:var(--txt2);">${e.totalQty>0?formatMs(Math.round(e.elapsed/e.totalQty))+'/pc':'—'}</td>
         <td style="padding:9px 16px;color:var(--txt2);">${e.stationCount}</td>
         <td style="padding:9px 16px;color:var(--txt2);">${[...e.soSet].join(', ')}</td>
       </tr>`).join('')}
@@ -3535,7 +3544,7 @@ function renderAnalytics(){
         <thead><tr style="background:var(--bg2);border-bottom:2px solid var(--bdr3);">
           <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Team</th>
           <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:center;">People</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Active Time / Thoi gian</th>
+          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:left;">Active Time / Thoi gian</th>
           <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:center;">Active Items</th>
           <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:right;">Qty in Progress</th>
           <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Queue Wait / Cho doi</th>
@@ -3698,6 +3707,34 @@ function clearSchedFilters(){
 // upsert. If the line already has a note that matches the typed value, this
 // is a no-op (skipped). Updates the local map so the row stays in sync
 // without forcing a full re-render.
+async function adminUpdateSO(){
+  const soNum=(document.getElementById('soEditNum')?.value||'').trim().toUpperCase();
+  const shipDate=document.getElementById('soEditDate')?.value||'';
+  const sales=(document.getElementById('soEditSales')?.value||'').trim();
+  const status=document.getElementById('soEditStatus');
+  if(!soNum){if(status)status.textContent='⚠️ Enter SO number';return;}
+  if(!shipDate){if(status)status.textContent='⚠️ Enter ship date';return;}
+  if(status)status.textContent='Saving...';
+  try{
+    const payload={so_number:soNum,ship_date:shipDate};
+    if(sales)payload.sales_person=sales;
+    await sb.from('sales_orders_meta').upsert(payload,{onConflict:'so_number'});
+    const ex=soMetaMap.get(soNum)||{};
+    soMetaMap.set(soNum,{...ex,...payload});
+    if(status)status.innerHTML='<span style="color:var(--green);">✓ Saved — '+soNum+', ship '+shipDate+'</span>';
+    if(document.getElementById('page-schedule')?.classList.contains('active'))renderSchedule();
+  }catch(e){if(status)status.textContent='Error: '+e.message;}
+}
+
+async function saveAgentService(soNumber,value){
+  try{
+    await sb.from('sales_orders_meta').upsert({so_number:soNumber,agent_service:value},{onConflict:'so_number'});
+    // update local map
+    const existing=soMetaMap.get(soNumber.toUpperCase())||{};
+    soMetaMap.set(soNumber.toUpperCase(),{...existing,agent_service:value});
+  }catch(e){showToast('Error saving agent service: '+e.message,'red');}
+}
+
 async function saveScheduleNote(el){
   const lineId=el.getAttribute('data-line-id');
   if(!lineId)return;
@@ -4135,23 +4172,6 @@ function renderAdmin(){
         ${completedLinesFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'No completed orders')+'</div>'}
       </div>
     </div>
-    <div class="admin-section" data-sec="inventory">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('inventory')">📦 Inventory Sync / Stok ekle (Power BI)</div>
-      <div class="admin-section-body">
-        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-            Upload Power BI export (CSV/Excel) with columns: <strong>Description_2</strong> (item code), <strong>Sum of Qty_Avail</strong> (on hand), <strong>Sum of Qty_on_Purch_Order</strong> (on order), <strong>Earliest_Expected_Receipt</strong> (ETA), <strong>Special_Order_Sales_No</strong> (optional). System auto-matches column names.
-          </div>
-          <div id="inventoryStatus" style="font-size:12px;color:var(--txt3);"></div>
-          <input type="file" id="inventoryFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleInventoryFile(event)"/>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="document.getElementById('inventoryFile').click()" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload Inventory File</button>
-            <button onclick="loadInventoryStatus()" style="padding:8px 16px;font-size:13px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-weight:500;">↻ Check Current</button>
-          </div>
-          <div id="inventoryPreview" style="display:none;"></div>
-        </div>
-      </div>
-    </div>
     <div class="admin-section" data-sec="posync">
       <div class="admin-section-hdr" onclick="toggleAdminSection('posync')">📦 PO Data Sync / Satin alma verileri</div>
       <div class="admin-section-body">
@@ -4169,17 +4189,24 @@ function renderAdmin(){
       </div>
     </div>
     <div class="admin-section" data-sec="sosync">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('sosync')">📅 Sales Orders Sync / Sipari\u015f tarihleri</div>
+      <div class="admin-section-hdr" onclick="toggleAdminSection('sosync')">📅 Sales Orders / Sipariş tarihleri</div>
       <div class="admin-section-body">
         <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-            Upload Power BI export with columns: <strong>SO Number</strong>, <strong>Ship Date</strong>, <strong>Customer</strong> (optional), <strong>Priority</strong> (optional), <strong>Sales Person</strong> (optional). System uses ship date for production scheduling.
+          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">Upload Power BI export <em>or</em> edit a single SO directly below.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">SO Number</label><input id="soEditNum" type="text" placeholder="e.g. 811396" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);font-family:monospace;width:130px;background:var(--bg1);color:var(--txt1);" autocomplete="off"/></div>
+            <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">Ship Date</label><input id="soEditDate" type="date" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);"/></div>
+            <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:11px;color:var(--txt3);">Sales Person</label><input id="soEditSales" type="text" placeholder="optional" style="padding:7px 10px;font-size:13px;border:1px solid var(--bdr2);border-radius:var(--r-md);width:120px;background:var(--bg1);color:var(--txt1);" autocomplete="off"/></div>
+            <button onclick="adminUpdateSO()" style="padding:8px 16px;font-size:13px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;height:36px;">✓ Save SO</button>
           </div>
-          <div id="soStatus" style="font-size:12px;color:var(--txt3);"></div>
-          <input type="file" id="soFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleSOFile(event)"/>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="document.getElementById('soFile').click()" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload SO Ship Dates</button>
-            <button onclick="loadSOStatus()" style="padding:8px 16px;font-size:13px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-weight:500;">↻ Check Current</button>
+          <div id="soEditStatus" style="font-size:12px;color:var(--txt3);"></div>
+          <div style="border-top:1px solid var(--bdr3);padding-top:10px;">
+            <div id="soStatus" style="font-size:12px;color:var(--txt3);"></div>
+            <input type="file" id="soFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleSOFile(event)"/>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="document.getElementById('soFile').click()" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload SO Ship Dates</button>
+              <button onclick="loadSOStatus()" style="padding:8px 16px;font-size:13px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:var(--r-md);cursor:pointer;font-weight:500;">↻ Check Current</button>
+            </div>
           </div>
           <div id="soPreview" style="display:none;"></div>
         </div>
@@ -6868,7 +6895,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v31 — auto-update + tap-ring UI + dup guard + zombie fix + labor tab';
+const BUILD_TAG  = 'v32 — agent service + schedule cleanup + SO edit + item history qty';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
