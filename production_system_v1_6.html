@@ -3342,7 +3342,7 @@ async function renderLaborTime(){
     // build maps
     const stMap=Object.fromEntries(stRes.map(s=>[s.id,s]));
     const wMap=Object.fromEntries((workersList||[]).map(w=>[w.id,w]));
-    const lineMap=Object.fromEntries((allLines||[]).map(l=>[l.id,l]));
+    const lineMap=Object.fromEntries((lines||[]).map(l=>[l.id,l]));
     // enrich sessions
     const sessions=sessRes.map(s=>{
       const st=stMap[s.station_id]||{};
@@ -6895,7 +6895,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v33 — SO upload rework + agent service red + per unit + sticky header';
+const BUILD_TAG  = 'v34 — labor tab allLines fix';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
