@@ -2719,7 +2719,7 @@ function renderWorker(){
 
     return `<div class="job-card ${cardCls}" data-station-id="${j.stationId}" data-label="${j.so} · ${j.item}" oncontextmenu="return false;">
       <div class="sl ${slCls}"></div>
-      <div class="jc-so">${j.so}${(()=>{const m=soMetaMap.get(String(j.so).toUpperCase());const sv=m&&m.agent_service;return sv&&sv!=='GROUND'?`<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:5px;background:${sv==='NEXT DAY'?'#FFEBEE':'#FFF3E0'};color:${sv==='NEXT DAY'?'#c62828':'#e65100'};">${sv}</span>`:'';})()}</div>
+      <div class="jc-so">${j.so}${(()=>{const m=soMetaMap.get(String(j.so).toUpperCase());const sv=m&&m.agent_service;return sv&&sv!=='GROUND'?`<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:5px;background:#FFEBEE;color:#c62828;">${sv}</span>`:'';})()}</div>
       ${teamTag}
       <div class="jc-divider"></div>
       <div class="jc-row">
@@ -3152,8 +3152,8 @@ function renderSchedule(){
 
     // Agent Service
     const agentSvc=(it.ship&&it.ship.agent_service)||'GROUND';
-    const agentColor=agentSvc==='NEXT DAY'?'#c62828':agentSvc==='PRIORITY'?'#e65100':'#2e7d32';
-    const agentBg=agentSvc==='NEXT DAY'?'#FFEBEE':agentSvc==='PRIORITY'?'#FFF3E0':'#E8F5E9';
+    const agentColor=(agentSvc==='NEXT DAY'||agentSvc==='PRIORITY')?'#c62828':'#2e7d32';
+    const agentBg=(agentSvc==='NEXT DAY'||agentSvc==='PRIORITY')?'#FFEBEE':'#E8F5E9';
     const agentCell=`<select onchange="saveAgentService('${l.so}',this.value)" style="font-size:11px;padding:3px 6px;border-radius:5px;border:1px solid ${agentColor};background:${agentBg};color:${agentColor};font-weight:600;cursor:pointer;">
       <option value="GROUND"${agentSvc==='GROUND'?' selected':''}>GROUND</option>
       <option value="PRIORITY"${agentSvc==='PRIORITY'?' selected':''}>PRIORITY</option>
@@ -3294,7 +3294,7 @@ function renderItemHistory(){
   if(!sorted.length){body.innerHTML='<div style="text-align:center;color:var(--txt3);padding:40px;">No data</div>';return;}
 
   body.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead>
+    <thead style="position:sticky;top:0;z-index:2;">
       <tr style="background:var(--bg2);border-bottom:2px solid var(--bdr3);">
         <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Item No</th>
         <th style="padding:9px 16px;text-align:right;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Total Qty</th>
@@ -3309,7 +3309,7 @@ function renderItemHistory(){
         <td style="padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--txt1);">${e.item}</td>
         <td style="padding:9px 16px;text-align:right;color:var(--txt2);">${e.totalQty?e.totalQty.toLocaleString()+' pcs':'—'}</td>
         <td style="padding:9px 16px;font-weight:600;color:var(--blue);">${formatMs(e.elapsed)}</td>
-        <td style="padding:9px 16px;color:var(--txt2);">${e.totalQty>0?formatMs(Math.round(e.elapsed/e.totalQty))+'/pc':'—'}</td>
+        <td style="padding:9px 16px;color:var(--txt2);font-variant-numeric:tabular-nums;">${e.totalQty>0?formatMs(Math.round(e.elapsed/e.totalQty))+' / pcs':'—'}</td>
         <td style="padding:9px 16px;color:var(--txt2);">${e.stationCount}</td>
         <td style="padding:9px 16px;color:var(--txt2);">${[...e.soSet].join(', ')}</td>
       </tr>`).join('')}
@@ -4172,21 +4172,7 @@ function renderAdmin(){
         ${completedLinesFiltered.length?`<table class="admin-table"><thead><tr><th>SO</th><th>Item</th><th>Qty</th><th>Status</th><th>Action</th></tr></thead><tbody>${completedRows}</tbody></table>`:'<div class="admin-empty">'+(q?'No matches':'No completed orders')+'</div>'}
       </div>
     </div>
-    <div class="admin-section" data-sec="posync">
-      <div class="admin-section-hdr" onclick="toggleAdminSection('posync')">📦 PO Data Sync / Satin alma verileri</div>
-      <div class="admin-section-body">
-        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-          <div style="font-size:13px;color:var(--txt2);line-height:1.7;">
-            Upload Power BI PO export (CSV). Required columns: <strong>SO_Key</strong>, <strong>Description_2</strong> (item), <strong>PO Item No</strong> (material), <strong>Outstanding_Quantity</strong>, <strong>Expected_Receipt_Date</strong>. Replaces all existing PO-SO link data.
-          </div>
-          <div id="poSyncStatus" style="font-size:12px;color:var(--txt3);"></div>
-          <input type="file" id="poSyncFile" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handlePOSyncFile(event)"/>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="document.getElementById('poSyncFile').click()" style="padding:8px 16px;font-size:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:500;">📥 Upload PO Data</button>
-          </div>
-          <div id="poSyncPreview" style="display:none;"></div>
-        </div>
-      </div>
+
     </div>
     <div class="admin-section" data-sec="sosync">
       <div class="admin-section-hdr" onclick="toggleAdminSection('sosync')">📅 Sales Orders / Sipariş tarihleri</div>
@@ -4817,6 +4803,18 @@ async function commitPOSync(){
   }
 }
 
+
+function shipCodeToAgentService(code){
+  const c=String(code||'').trim();
+  // NEXT DAY codes
+  const nextDay=new Set(['105','106','107','204','205','210','FED1DS','UPS1D','UPS1DS']);
+  // PRIORITY codes (2-3 day, express)
+  const priority=new Set(['102','103','104','202','203','217','305','306','307','309','UPS2DC','UPS2DR','UPS2DS','UPS3DS','USPSPM']);
+  if(nextDay.has(c))return 'NEXT DAY';
+  if(priority.has(c))return 'PRIORITY';
+  return 'GROUND';
+}
+
 async function handleSOFile(event){
   const file=event.target.files&&event.target.files[0];
   event.target.value='';
@@ -4835,6 +4833,7 @@ async function handleSOFile(event){
     const custCol=findCol(sample,['sell to customer no','customer name','customer no','customer']);
     const prioCol=findCol(sample,['priority','prio']);
     const salesCol=findCol(sample,['salesperson name','sales person','salesperson','sales rep','sales representative','account manager']);
+    const shipCodeCol=findCol(sample,['shipment method code','ship method code','shipping method code','method code','shipment code']);
     if(!soCol||!shipCol){
       showToast('Cannot find SO or Ship Date column. Headers: '+Object.keys(sample).join(', '),'red');
       return;
@@ -4853,6 +4852,7 @@ async function handleSOFile(event){
           customer:custCol?String(r[custCol]||'').trim():null,
           priority:prioCol?String(r[prioCol]||'').trim():null,
           sales_person:salesCol?String(r[salesCol]||'').trim()||null:null,
+          agent_service:shipCodeCol?shipCodeToAgentService(r[shipCodeCol]):undefined,
           last_synced:new Date().toISOString()
         });
       }
@@ -6895,7 +6895,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v32 — agent service + schedule cleanup + SO edit + item history qty';
+const BUILD_TAG  = 'v33 — SO upload rework + agent service red + per unit + sticky header';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
