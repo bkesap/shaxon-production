@@ -6899,7 +6899,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v41 — finish card debug UID';
+const BUILD_TAG  = 'v42 — finish card uid length fix';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7060,7 +7060,7 @@ function laborScanInput(val){
   // Route to finish verification if awaiting finish card scan
   if(_finishSession){
     const uid=(val||'').trim().toUpperCase().replace(/\s/g,'');
-    if(uid.length>=10){  // wait for complete UID
+    if(uid.length>=14){  // wait for complete 7-byte NFC UID
       const {sessionId,totalPauseMs,workerId}=_finishSession;
       laborVerifyFinishCard(uid,sessionId,totalPauseMs,workerId);
       const inp=document.getElementById('laborCardScan');if(inp)inp.value='';
