@@ -1015,7 +1015,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v28 — Labor time tab + card scan UI';
+  b.textContent='● v29 — shift-end zombie guard + labor tab + card scan UI';
 }
 
 function lockActions(srcEl){
@@ -6248,7 +6248,7 @@ async function checkShiftEnd(){
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
     shiftStartNotified=false;
-    const activeJobs=jobs.filter(j=>j.state==='active');
+    const activeJobs=jobs.filter(j=>j.state==='active'&&!j.doneAt);
     if(activeJobs.length>0){
       setSyncDot('syncing');
       try{
@@ -6854,7 +6854,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v26 — Labor: card scan + all-teams guard';
+const BUILD_TAG  = 'v29 — shift-end zombie guard + labor tab + card scan UI';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
