@@ -445,6 +445,7 @@ body{font-family:var(--font);background:var(--bg2);}
   <div class="nav-tab" onclick="showPage('schedule',this)">📅 Schedule</div>
   <div class="nav-tab" onclick="showPage('flow',this)">🔄 Production Flow</div>
   <div class="nav-tab" onclick="showPage('analytics',this)">📊 Analytics</div>
+  <div class="nav-tab" onclick="showPage('labortime',this)">⏱ Labor</div>
   <div class="nav-tab" onclick="showPage('itemhistory',this)">🕐 Item History</div>
   <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
@@ -680,6 +681,28 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
     <div id="analyticsBody" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
       <div style="text-align:center;color:var(--txt3);padding:40px;">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LABOR TIME ══ -->
+<div class="page" id="page-labortime">
+  <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:var(--bg2);">
+    <div style="padding:10px 16px;background:var(--bg1);border-bottom:1px solid var(--bdr3);display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">
+      <span style="font-size:14px;font-weight:600;color:var(--txt1);">⏱ Labor Time</span>
+      <select id="ltDateFilter" onchange="renderLaborTime()" style="padding:5px 8px;font-size:12px;border:1px solid var(--bdr2);border-radius:6px;background:var(--bg1);color:var(--txt1);">
+        <option value="today">Today</option>
+        <option value="week">This Week</option>
+        <option value="all">All</option>
+      </select>
+      <select id="ltGroupBy" onchange="renderLaborTime()" style="padding:5px 8px;font-size:12px;border:1px solid var(--bdr2);border-radius:6px;background:var(--bg1);color:var(--txt1);">
+        <option value="order">By Order</option>
+        <option value="worker">By Worker</option>
+      </select>
+      <button onclick="exportLaborCSV()" style="margin-left:auto;padding:5px 12px;font-size:12px;background:var(--green);color:#fff;border:none;border-radius:6px;cursor:pointer;">⬇ CSV</button>
+    </div>
+    <div style="flex:1;overflow:auto;padding:12px 16px;">
+      <div id="laborTimeBody">Loading...</div>
     </div>
   </div>
 </div>
@@ -992,7 +1015,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v27 — Labor: card scan UI redesign';
+  b.textContent='● v28 — Labor time tab + card scan UI';
 }
 
 function lockActions(srcEl){
@@ -1331,6 +1354,7 @@ function showPage(p,el){
   }
   if(p==='flow')renderProductionFlow();
   if(p==='analytics')renderAnalytics();
+  if(p==='labortime')renderLaborTime();
   if(p==='itemhistory')renderItemHistory();
   if(p==='chat'){
     if(!deviceName)ensureDeviceName();
@@ -3283,6 +3307,165 @@ function renderItemHistory(){
     </tbody>
   </table>`;
 }
+
+// ── LABOR TIME PAGE ──────────────────────────────────────────
+let _ltCache=null;
+async function renderLaborTime(){
+  const body=document.getElementById('laborTimeBody');
+  if(!body)return;
+  body.innerHTML='<div style="text-align:center;color:var(--txt3);padding:40px;">Loading...</div>';
+  try{
+    const dateFilter=document.getElementById('ltDateFilter')?.value||'today';
+    const groupBy=document.getElementById('ltGroupBy')?.value||'order';
+    // date range
+    let since='';
+    const now=new Date();
+    if(dateFilter==='today'){const d=new Date(now);d.setHours(0,0,0,0);since=d.toISOString();}
+    else if(dateFilter==='week'){const d=new Date(now);d.setDate(d.getDate()-7);since=d.toISOString();}
+    // fetch labor sessions with worker + station + line
+    const q=since?`started_at=gte.${since}`:'';
+    const [sessRes,stRes]=await Promise.all([
+      sb.from('labor_sessions').select('id,worker_id,station_id,started_at,ended_at,total_pause_ms,status').order('started_at',{ascending:false}).limit(2000)
+        .then(r=>r.data||[]),
+      sb.from('stations').select('id,line_id,grp,state,started_at,done_at,elapsed_ms,sent_qty').limit(5000)
+        .then(r=>r.data||[])
+    ]);
+    // build maps
+    const stMap=Object.fromEntries(stRes.map(s=>[s.id,s]));
+    const wMap=Object.fromEntries((workersList||[]).map(w=>[w.id,w]));
+    const lineMap=Object.fromEntries((allLines||[]).map(l=>[l.id,l]));
+    // enrich sessions
+    const sessions=sessRes.map(s=>{
+      const st=stMap[s.station_id]||{};
+      const ln=lineMap[st.line_id]||{};
+      const w=wMap[s.worker_id]||{name:'Unknown',team:''};
+      const ms=s.ended_at&&s.status!=='active'
+        ?new Date(s.ended_at)-new Date(s.started_at)-(s.total_pause_ms||0)
+        :s.status==='active'?Date.now()-new Date(s.started_at)-(s.total_pause_ms||0):0;
+      return{...s,worker:w,station:st,line:ln,netMs:Math.max(0,ms)};
+    }).filter(s=>s.station&&s.line.so);
+    // filter by date on line/session
+    const sinceMs=since?new Date(since).getTime():0;
+    const filtered=sinceMs?sessions.filter(s=>new Date(s.started_at).getTime()>=sinceMs):sessions;
+    _ltCache={sessions:filtered,stRes,lineMap,stMap,wMap};
+    if(!filtered.length){body.innerHTML='<div style="text-align:center;color:var(--txt3);padding:40px;">No labor sessions found for this period.</div>';return;}
+    if(groupBy==='worker')_renderLaborByWorker(body,filtered);
+    else _renderLaborByOrder(body,filtered,stRes,lineMap,stMap);
+  }catch(e){body.innerHTML=`<div style="color:var(--red);padding:20px;">Error: ${e.message}</div>`;}
+}
+
+function _fmtMs(ms){
+  if(!ms||ms<0)return'—';
+  const h=Math.floor(ms/3600000);const m=Math.floor((ms%3600000)/60000);const s=Math.floor((ms%60000)/1000);
+  return h?`${h}h ${m}m`:`${m}m ${s}s`;
+}
+
+function _renderLaborByOrder(body,sessions,stRes,lineMap,stMap){
+  // group by line_id
+  const byLine={};
+  sessions.forEach(s=>{
+    const lid=s.station?.line_id;if(!lid)return;
+    if(!byLine[lid])byLine[lid]={line:s.line,sessions:[],stations:{}};
+    byLine[lid].sessions.push(s);
+    const grp=s.station?.grp||'?';
+    if(!byLine[lid].stations[grp])byLine[lid].stations[grp]={laborMs:0,elapsedMs:s.station?.elapsed_ms||0,workers:new Set()};
+    byLine[lid].stations[grp].laborMs+=s.netMs;
+    byLine[lid].stations[grp].workers.add(s.worker.name);
+  });
+  // also add station elapsed for stations with no labor sessions
+  stRes.forEach(st=>{
+    const lid=st.line_id;if(!byLine[lid])return;
+    if(!byLine[lid].stations[st.grp]){byLine[lid].stations[st.grp]={laborMs:0,elapsedMs:st.elapsed_ms||0,workers:new Set()};}
+    else{byLine[lid].stations[st.grp].elapsedMs=st.elapsed_ms||0;}
+  });
+  const rows=Object.values(byLine).sort((a,b)=>(b.line.so||'').localeCompare(a.line.so||''));
+  const grpOrder=['Cutting','Part Pull','C1','C2','C3','C4','C3 - M','Testing/Packing','QC'];
+  const allGrps=[...new Set(rows.flatMap(r=>Object.keys(r.stations)))].sort((a,b)=>grpOrder.indexOf(a)-grpOrder.indexOf(b)||(a>b?1:-1));
+  const thStyle='padding:6px 10px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);white-space:nowrap;';
+  const tdStyle='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);vertical-align:top;';
+  let html=`<table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
+    <thead><tr>
+      <th style="${thStyle}">SO</th>
+      <th style="${thStyle}">Item</th>
+      <th style="${thStyle}">Qty</th>
+      <th style="${thStyle}">Total Labor</th>
+      ${allGrps.map(g=>`<th style="${thStyle}">${g}</th>`).join('')}
+    </tr></thead><tbody>`;
+  rows.forEach(({line,sessions:ss,stations})=>{
+    const totalLabor=ss.reduce((a,s)=>a+s.netMs,0);
+    html+=`<tr>
+      <td style="${tdStyle}font-weight:600;">${line.so||'—'}</td>
+      <td style="${tdStyle}">${line.item||'—'}</td>
+      <td style="${tdStyle}text-align:right;">${line.qty||'—'}</td>
+      <td style="${tdStyle}font-weight:600;color:var(--blue);">${_fmtMs(totalLabor)}</td>
+      ${allGrps.map(g=>{
+        const st=stations[g];
+        if(!st||(!st.laborMs&&!st.elapsedMs))return`<td style="${tdStyle}color:var(--txt3);">—</td>`;
+        const queueMs=st.elapsedMs-st.laborMs;
+        return`<td style="${tdStyle}">
+          <div style="font-size:11px;color:var(--blue);font-weight:600;">⚡ ${_fmtMs(st.laborMs)}</div>
+          ${st.elapsedMs?`<div style="font-size:10px;color:var(--txt3);">⏱ ${_fmtMs(st.elapsedMs)}</div>`:''}
+          ${[...st.workers].length?`<div style="font-size:10px;color:var(--txt2);">${[...st.workers].join(', ')}</div>`:''}
+        </td>`;
+      }).join('')}
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  html+=`<div style="font-size:11px;color:var(--txt3);margin-top:8px;">⚡ = labor (touch time) &nbsp;·&nbsp; ⏱ = total station elapsed</div>`;
+  body.innerHTML=html;
+}
+
+function _renderLaborByWorker(body,sessions){
+  const byWorker={};
+  sessions.forEach(s=>{
+    const wid=s.worker_id;
+    if(!byWorker[wid])byWorker[wid]={worker:s.worker,sessions:[],totalMs:0};
+    byWorker[wid].sessions.push(s);
+    byWorker[wid].totalMs+=s.netMs;
+  });
+  const rows=Object.values(byWorker).sort((a,b)=>b.totalMs-a.totalMs);
+  const thStyle='padding:6px 10px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);';
+  const tdStyle='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);';
+  let html=`<table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
+    <thead><tr>
+      <th style="${thStyle}">Worker</th>
+      <th style="${thStyle}">Team</th>
+      <th style="${thStyle}">Sessions</th>
+      <th style="${thStyle}">Total Labor</th>
+      <th style="${thStyle}">Orders Worked</th>
+    </tr></thead><tbody>`;
+  rows.forEach(({worker,sessions:ss,totalMs})=>{
+    const orders=[...new Set(ss.map(s=>s.line?.so).filter(Boolean))];
+    html+=`<tr>
+      <td style="${tdStyle}font-weight:600;">${worker.name}</td>
+      <td style="${tdStyle}">${worker.team||'—'}</td>
+      <td style="${tdStyle}text-align:right;">${ss.length}</td>
+      <td style="${tdStyle}font-weight:600;color:var(--blue);">${_fmtMs(totalMs)}</td>
+      <td style="${tdStyle}font-size:11px;color:var(--txt2);">${orders.slice(0,5).join(', ')}${orders.length>5?` +${orders.length-5} more`:''}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  body.innerHTML=html;
+}
+
+function exportLaborCSV(){
+  if(!_ltCache)return;
+  const{sessions}=_ltCache;
+  const rows=[['Worker','Team','SO','Item','Station','Started','Ended','Labor (min)','Status']];
+  sessions.forEach(s=>{
+    rows.push([
+      s.worker.name,s.worker.team,s.line?.so||'',s.line?.item||'',
+      s.station?.grp||'',s.started_at||'',s.ended_at||'',
+      (s.netMs/60000).toFixed(1),s.status
+    ]);
+  });
+  const csv=rows.map(r=>r.map(v=>(`"${String(v).replace(/"/g,'""')}"`)).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`shaxon_labor_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+// ── END LABOR TIME ────────────────────────────────────────────
 
 function renderAnalytics(){
   const body=document.getElementById('analyticsBody');
