@@ -4894,14 +4894,14 @@ async function handleSOFile(event){
           customer:custCol?String(r[custCol]||'').trim():null,
           priority:prioCol?String(r[prioCol]||'').trim():null,
           sales_person:salesCol?String(r[salesCol]||'').trim()||null:null,
-          agent_service:shipCodeCol?shipCodeToAgentService(r[shipCodeCol]):undefined,
+          agent_service:shipCodeCol?shipCodeToAgentService(r[shipCodeCol]):null,
           last_synced:new Date().toISOString()
         });
       }
     }
     const records=[...map.values()];
     if(!records.length){showToast('No valid SO rows','red');return;}
-    showSOPreview(records,{soCol,shipCol,custCol,prioCol,salesCol});
+    showSOPreview(records,{soCol,shipCol,custCol,prioCol,salesCol,shipCodeCol});
   }catch(err){
     console.error('SO parse error:',err);
     showToast('Failed to parse: '+(err.message||''),'red');
@@ -4916,6 +4916,7 @@ function showSOPreview(records,cols){
     <td style="padding:6px 10px;">${r.customer||'—'}</td>
     <td style="padding:6px 10px;">${r.priority||'—'}</td>
     <td style="padding:6px 10px;">${r.sales_person||'—'}</td>
+    <td style="padding:6px 10px;">${r.agent_service||'—'}</td>
   </tr>`).join('');
   window._pendingSO=records;
   preview.style.display='block';
@@ -4927,10 +4928,11 @@ function showSOPreview(records,cols){
         ${cols.custCol?', <span style="color:var(--blue);">'+cols.custCol+'</span> → customer':''}
         ${cols.prioCol?', <span style="color:var(--blue);">'+cols.prioCol+'</span> → priority':''}
         ${cols.salesCol?', <span style="color:var(--blue);">'+cols.salesCol+'</span> → sales_person':''}
+        ${cols.shipCodeCol?', <span style="color:var(--blue);">'+cols.shipCodeCol+'</span> → agent_service':''}
       </div>
       <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Preview (first 5):</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg1);border-radius:6px;overflow:hidden;">
-        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">SO</th><th style="padding:6px 10px;text-align:left;">Ship Date</th><th style="padding:6px 10px;text-align:left;">Customer</th><th style="padding:6px 10px;text-align:left;">Priority</th><th style="padding:6px 10px;text-align:left;">Sales Person</th></tr></thead>
+        <thead><tr style="background:var(--bg2);"><th style="padding:6px 10px;text-align:left;">SO</th><th style="padding:6px 10px;text-align:left;">Ship Date</th><th style="padding:6px 10px;text-align:left;">Customer</th><th style="padding:6px 10px;text-align:left;">Priority</th><th style="padding:6px 10px;text-align:left;">Sales Person</th><th style="padding:6px 10px;text-align:left;">Agent Service</th></tr></thead>
         <tbody>${sample}</tbody>
       </table>
       <div style="display:flex;gap:8px;margin-top:10px;">
@@ -6943,7 +6945,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v45 — full shipment code mapping';
+const BUILD_TAG  = 'v46 — agent service in SO preview + full code map';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
