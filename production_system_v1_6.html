@@ -1015,7 +1015,7 @@ function _lockBadge(state){
     b.style.cssText='position:fixed;top:8px;right:8px;z-index:999999;font:700 12px/1.2 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:none;background:#1b5e20;color:#fff;';
     document.body.appendChild(b);
   }
-  b.textContent='● v29 — shift-end zombie guard + labor tab + card scan UI';
+  b.textContent='● '+(typeof BUILD_TAG!=='undefined'?BUILD_TAG:'?');
 }
 
 function lockActions(srcEl){
@@ -6854,7 +6854,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v29 — shift-end zombie guard + labor tab + card scan UI';
+const BUILD_TAG  = 'v30 — tap-ring scan UI + dup guard + zombie fix + labor tab';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -6987,12 +6987,16 @@ async function refreshLaborModal(){
   // Card scan area — tap to focus, RFID bridge types UID
   html+=`<div id="laborScanArea">
     <div id="laborScanPrompt" onclick="document.getElementById('laborCardScan').focus()"
-      style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:18px 12px;border:2px dashed var(--bdr2);border-radius:12px;cursor:pointer;background:var(--bg2);margin-bottom:8px;transition:border-color .15s;"
-      onmouseenter="this.style.borderColor='var(--blue)'" onmouseleave="this.style.borderColor='var(--bdr2)'">
-      <span style="font-size:28px;">📲</span>
-      <span style="font-size:13px;font-weight:600;color:var(--txt1);">Scan Card / Quet the</span>
+      style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 12px;cursor:pointer;margin-bottom:8px;">
+      <div style="width:72px;height:72px;border-radius:50%;background:var(--green-lt,#E8F5E9);border:3px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:30px;position:relative;">
+        🪪
+        <span style="position:absolute;width:90px;height:90px;border-radius:50%;border:2px solid rgba(76,175,80,.25);animation:laborRipple 2s linear infinite;top:50%;left:50%;transform:translate(-50%,-50%);"></span>
+        <span style="position:absolute;width:110px;height:110px;border-radius:50%;border:2px solid rgba(76,175,80,.15);animation:laborRipple 2s linear infinite .6s;top:50%;left:50%;transform:translate(-50%,-50%);"></span>
+      </div>
+      <span style="font-size:14px;font-weight:700;color:var(--txt1);">Scan Card / Quet the</span>
       <span style="font-size:11px;color:var(--txt3);">Hold card to reader — or tap to type UID</span>
     </div>
+    <style>@keyframes laborRipple{0%{transform:translate(-50%,-50%) scale(.9);opacity:.8}100%{transform:translate(-50%,-50%) scale(1.3);opacity:0}}</style>
     <input id="laborCardScan" type="text" autocomplete="off"
       style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"
       oninput="laborScanInput(this.value)"/>
@@ -7031,7 +7035,7 @@ function laborScanInput(val){
         <span style="font-size:18px;color:var(--green);">✓</span>
       </div>
       <button onclick="laborStartAction()" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.02em;">▶ Start / Bat dau</button>
-      <button onclick="laborClearScan()" style="width:100%;padding:7px;background:none;color:var(--txt3);border:none;font-size:12px;cursor:pointer;margin-top:4px;">↩ Scan different card</button>`;
+      <button onclick="laborClearScan()" style="width:100%;padding:8px;background:none;color:var(--red);border:1.5px solid #FFCDD2;border-radius:var(--r-md);font-size:12px;font-weight:600;cursor:pointer;margin-top:6px;">✕ Cancel / Huy bo</button>`;
   } else {
     if(sel)sel.value='';
     if(prompt)prompt.style.display='none';
@@ -7071,8 +7075,16 @@ function laborClearScan(){
 async function laborStartAction(){
   const sel=document.getElementById('laborWorkerSel');
   if(!sel||!sel.value){showToast('Select a worker / Quet the hoac chon','red');return;}
+  const wid=parseInt(sel.value);
+  // duplicate check — same worker already active/paused on this station
+  const existing=(laborSessions[_laborModalStationId]||[]).find(s=>s.worker_id===wid&&['active','paused'].includes(s.status));
+  if(existing){
+    const w=workersList.find(x=>x.id===wid);
+    showToast(`⚠️ ${w?.name||'Worker'} already on this job`,'red');
+    return;
+  }
   try{
-    await laborStart(_laborModalStationId,parseInt(sel.value));
+    await laborStart(_laborModalStationId,wid);
     showToast('✅ Labor started');
     await refreshLaborModal();
   }catch(e){showToast('Error: '+e.message,'red');}
