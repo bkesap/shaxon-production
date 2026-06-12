@@ -3306,7 +3306,7 @@ function renderItemHistory(){
     </thead>
     <tbody>
       ${sorted.map((e,i)=>`<tr style="border-bottom:1px solid var(--bdr3);${i%2?'background:var(--bg2)':''}">
-        <td style="padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--txt1);">${e.item}</td>
+        <td style="padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--txt1);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.item}</td>
         <td style="padding:9px 16px;text-align:right;color:var(--txt2);">${e.totalQty?e.totalQty.toLocaleString()+' pcs':'—'}</td>
         <td style="padding:9px 16px;font-weight:600;color:var(--blue);">${formatMs(e.elapsed)}</td>
         <td style="padding:9px 16px;color:var(--txt2);font-variant-numeric:tabular-nums;">${e.totalQty>0?formatMs(Math.round(e.elapsed/e.totalQty))+' / pcs':'—'}</td>
@@ -6893,7 +6893,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v36 — labor station fetch fix';
+const BUILD_TAG  = 'v37 — finish card verify + button style + alignment';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7006,14 +7006,14 @@ async function refreshLaborModal(){
       const elapsed=s.status==='active'?now-new Date(s.started_at).getTime():(s.paused_at?new Date(s.paused_at).getTime()-new Date(s.started_at).getTime():0);
       const netMs=Math.max(0,elapsed-(s.total_pause_ms||0));
       const isPaused=s.status==='paused';
-      html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;">
-        <span style="font-size:13px;font-weight:500;flex:1;color:var(--txt1);">👤 ${w.name}</span>
-        <span style="font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums;">${formatMs(netMs)}</span>
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;">
+        <span style="font-size:13px;font-weight:600;flex:1;color:var(--txt1);">👤 ${w.name}</span>
+        <span style="font-size:12px;color:var(--txt2);font-variant-numeric:tabular-nums;font-weight:500;">${formatMs(netMs)}</span>
         ${isPaused
-          ?`<button onclick="laborResumeAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-m);border-radius:6px;cursor:pointer;">▶ Resume</button>`
-          :`<button onclick="laborPauseAction(${s.id})" style="padding:4px 10px;font-size:11px;background:var(--amber-lt);color:var(--amber-dk);border:1px solid #FFCC80;border-radius:6px;cursor:pointer;">⏸ Pause</button>`
+          ?`<button onclick="laborResumeAction(${s.id},${s.total_pause_ms||0})" style="padding:7px 14px;font-size:12px;font-weight:600;background:var(--blue);color:#fff;border:none;border-radius:7px;cursor:pointer;">▶ Resume</button>`
+          :`<button onclick="laborPauseAction(${s.id})" style="padding:7px 14px;font-size:12px;font-weight:600;background:#EF9A9A;color:#B71C1C;border:none;border-radius:7px;cursor:pointer;">⏸ Pause</button>`
         }
-        <button onclick="laborStopAction(${s.id},${s.total_pause_ms||0})" style="padding:4px 10px;font-size:11px;background:var(--red-lt);color:var(--red);border:1px solid #FFCDD2;border-radius:6px;cursor:pointer;">✓ Finish / Xong</button>
+        <button onclick="laborFinishWithCard(${s.id},${s.total_pause_ms||0},${s.worker_id})" style="padding:7px 18px;font-size:12px;font-weight:700;background:var(--green);color:#fff;border:none;border-radius:7px;cursor:pointer;">FINISH</button>
       </div>`;
     });
     html+=`<button onclick="laborShowAddPerson()" id="laborAddBtn"
@@ -7127,6 +7127,45 @@ async function laborStartAction(){
     showToast('✅ Labor started');
     await refreshLaborModal();
   }catch(e){showToast('Error: '+e.message,'red');}
+}
+
+
+function laborFinishWithCard(sessionId,totalPauseMs,workerId){
+  // Show card scan prompt in modal to confirm worker identity
+  const body=document.getElementById('laborModalBody');
+  const existing=body.querySelector('#finishScanArea');
+  if(existing){existing.remove();return;}
+  const div=document.createElement('div');
+  div.id='finishScanArea';
+  div.style.cssText='background:#E8F5E9;border:1.5px solid var(--green);border-radius:10px;padding:12px;margin-top:6px;';
+  const w=workersList.find(x=>x.id===workerId)||{name:'?'};
+  div.innerHTML=`<div style="font-size:12px;font-weight:600;color:#2e7d32;margin-bottom:8px;">Scan your card to confirm / Quet the de xac nhan</div>
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:6px;">Worker: <strong>${w.name}</strong></div>
+    <input id="finishScanInput" type="text" autocomplete="off"
+      style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"
+      oninput="laborVerifyFinishCard(this.value,${sessionId},${totalPauseMs},${workerId})"/>
+    <div id="finishScanMsg" style="font-size:12px;color:var(--txt3);">📲 Hold card to reader</div>
+    <button onclick="document.getElementById('finishScanArea').remove()" style="margin-top:6px;font-size:11px;padding:4px 10px;background:none;color:var(--txt3);border:1px solid var(--bdr2);border-radius:5px;cursor:pointer;">Cancel</button>`;
+  body.appendChild(div);
+  setTimeout(()=>{const inp=div.querySelector('#finishScanInput');if(inp)inp.focus();},50);
+}
+
+function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
+  const uid=val.trim().toUpperCase().replace(/\s/g,'');
+  if(!uid)return;
+  const w=workersList.find(x=>x.id===workerId);
+  const scanned=workersList.find(x=>x.uid.toUpperCase()===uid);
+  const msg=document.getElementById('finishScanMsg');
+  if(scanned&&scanned.id===workerId){
+    if(msg)msg.innerHTML=`<span style="color:var(--green);">✓ Confirmed — finishing session</span>`;
+    setTimeout(()=>laborStopAction(sessionId,totalPauseMs),600);
+  } else if(scanned){
+    if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
+    document.getElementById('finishScanInput').value='';
+  } else {
+    if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Card not found</span>`;
+    document.getElementById('finishScanInput').value='';
+  }
 }
 
 async function laborPauseAction(sessionId){
