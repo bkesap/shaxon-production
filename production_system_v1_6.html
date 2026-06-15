@@ -3417,10 +3417,15 @@ function _renderLaborByOrder(body,sessions,stRes,lineMap,stMap){
       <th style="${thStyle}min-width:60px;text-align:right;">Qty</th>
       ${allGrps.map(g=>`<th style="${thStyle}min-width:110px;">${g==='Testing / Packing'?'Testing':g}</th>`).join('')}
       <th style="${thStyle}min-width:90px;background:var(--blue-lt);color:var(--blue);">TOTAL</th>
+      <th style="${thStyle}min-width:80px;background:var(--green-lt);color:var(--green);">/ UNIT</th>
     </tr></thead><tbody>`;
+  let grandTotalMs=0;
   rows.forEach(({line,sessions:ss,stations})=>{
     const cappedMs=ss.reduce((a,s)=>a+Math.min(s.netMs,MAX_SESSION_MS),0);
     const hasStale=ss.some(s=>s.netMs>MAX_SESSION_MS);
+    const qty=parseInt((line.qty||'').replace(/[^0-9]/g,''))||0;
+    const perUnit=qty>0?Math.round(cappedMs/qty):0;
+    grandTotalMs+=cappedMs;
     html+=`<tr>
       <td style="${tdStyle}font-weight:700;">${line.so||'—'}</td>
       <td style="${tdStyle}">${line.item||'—'}</td>
@@ -3437,10 +3442,16 @@ function _renderLaborByOrder(body,sessions,stRes,lineMap,stMap){
         </td>`;
       }).join('')}
       <td style="${tdStyle}font-weight:700;color:var(--blue);background:var(--blue-lt);text-align:center;">${_fmtMs(cappedMs)}${hasStale?'<div style="font-size:9px;color:var(--amber);">⚠ stale</div>':''}</td>
+      <td style="${tdStyle}font-weight:600;color:var(--green);background:var(--green-lt);text-align:center;">${perUnit?_fmtMs(perUnit):'—'}</td>
     </tr>`;
   });
-  html+=`</tbody></table></div>`;
-  html+=`<div style="font-size:11px;color:var(--txt3);margin-top:8px;">⚡ = labor (touch time) &nbsp;·&nbsp; ⏱ = total station elapsed &nbsp;·&nbsp; ⚠ = session >12h (capped)</div>`;
+  const grandH=Math.floor(grandTotalMs/3600000),grandM=Math.floor((grandTotalMs%3600000)/60000);
+  html+=`</tbody><tfoot><tr>
+    <td colspan="${3+allGrps.length}" style="padding:8px 10px;font-size:12px;font-weight:700;color:var(--txt2);border-top:2px solid var(--bdr2);text-align:right;background:var(--bg2);">GRAND TOTAL</td>
+    <td style="padding:8px 10px;font-size:14px;font-weight:800;color:var(--blue);background:var(--blue-lt);border-top:2px solid var(--bdr2);text-align:center;">${grandH}h ${String(grandM).padStart(2,'0')}m</td>
+    <td style="padding:8px 10px;background:var(--green-lt);border-top:2px solid var(--bdr2);"></td>
+  </tr></tfoot></table></div>`;
+  html+=`<div style="font-size:11px;color:var(--txt3);margin-top:8px;">⚡ = labor (touch time) &nbsp;·&nbsp; ⏱ = total station elapsed &nbsp;·&nbsp; ⚠ = session >12h (capped) &nbsp;·&nbsp; /unit = labor per piece</div>`;
   body.innerHTML=html;
 }
 
@@ -6978,7 +6989,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v52 — labor UI overhaul + card scan on DONE';
+const BUILD_TAG  = 'v52 — labor UI: per-unit + grand total + card scan on DONE';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
