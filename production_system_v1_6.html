@@ -2189,6 +2189,15 @@ async function confirmDone_impl(){
   const remaining=availableQty-sentQty;
   const isFullSend=remaining===0;
 
+  // If active labor sessions exist for this station → require card scan before DONE
+  const activeSessions=(laborSessions[doneTargetId]||[]).filter(s=>['active','paused'].includes(s.status));
+  if(activeSessions.length>0){
+    closeModal('doneQtyModal');
+    _pendingDone={sentQty,remaining,isFinal:j.group===FINAL,j,availableQty,sid:doneTargetId};
+    _showDoneCardScan(activeSessions);
+    return;
+  }
+
   closeModal('doneQtyModal');
 
   // If Testing/Packing and sending ALL → show complete confirm
@@ -3342,7 +3351,10 @@ async function renderLaborTime(){
     // build maps
     const stMap=Object.fromEntries(stRes.map(s=>[s.id,s]));
     const wMap=Object.fromEntries((workersList||[]).map(w=>[w.id,w]));
-    const lineMap=Object.fromEntries((lines||[]).map(l=>[l.id,l]));
+    // Fetch lines directly from DB (includes fully_done orders not in memory)
+    const lineIds=[...new Set(stRes.map(s=>s.line_id).filter(Boolean))];
+    const linesFromDB=lineIds.length?(await sb.from('lines').select('id,so,item,qty,fully_done').in('id',lineIds)).data||[]:[];
+    const lineMap=Object.fromEntries(linesFromDB.map(l=>[l.id,l]));
     // enrich sessions
     const sessions=sessRes.map(s=>{
       const st=stMap[s.station_id]||{};
@@ -3388,39 +3400,47 @@ function _renderLaborByOrder(body,sessions,stRes,lineMap,stMap){
     else{byLine[lid].stations[st.grp].elapsedMs=st.elapsed_ms||0;}
   });
   const rows=Object.values(byLine).sort((a,b)=>(b.line.so||'').localeCompare(a.line.so||''));
-  const grpOrder=['Cutting','Part Pull','C1','C2','C3','C4','C3 - M','Testing/Packing','QC'];
-  const allGrps=[...new Set(rows.flatMap(r=>Object.keys(r.stations)))].sort((a,b)=>grpOrder.indexOf(a)-grpOrder.indexOf(b)||(a>b?1:-1));
-  const thStyle='padding:6px 10px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);white-space:nowrap;';
-  const tdStyle='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);vertical-align:top;';
-  let html=`<table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
+  const grpOrder=['Cutting','Part Pull','C1','C2','C3','C4','C3 - M','Testing / Packing','QC'];
+  const allGrps=[...new Set(rows.flatMap(r=>Object.keys(r.stations)))].sort((a,b)=>{
+    const ai=grpOrder.indexOf(a),bi=grpOrder.indexOf(b);
+    if(ai>=0&&bi>=0)return ai-bi;
+    if(ai>=0)return -1;if(bi>=0)return 1;
+    return a>b?1:-1;
+  });
+  const MAX_SESSION_MS=12*3600*1000; // cap stale sessions at 12h
+  const thStyle='padding:7px 10px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);border-right:1px solid var(--bdr3);white-space:nowrap;';
+  const tdStyle='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr2);border-right:1px solid var(--bdr3);vertical-align:top;';
+  let html=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);border:1px solid var(--bdr2);">
     <thead><tr>
-      <th style="${thStyle}">SO</th>
-      <th style="${thStyle}">Item</th>
-      <th style="${thStyle}">Qty</th>
-      <th style="${thStyle}">Total Labor</th>
-      ${allGrps.map(g=>`<th style="${thStyle}">${g}</th>`).join('')}
+      <th style="${thStyle}min-width:80px;">SO</th>
+      <th style="${thStyle}min-width:160px;">Item</th>
+      <th style="${thStyle}min-width:60px;text-align:right;">Qty</th>
+      ${allGrps.map(g=>`<th style="${thStyle}min-width:110px;">${g==='Testing / Packing'?'Testing':g}</th>`).join('')}
+      <th style="${thStyle}min-width:90px;background:var(--blue-lt);color:var(--blue);">TOTAL</th>
     </tr></thead><tbody>`;
   rows.forEach(({line,sessions:ss,stations})=>{
-    const totalLabor=ss.reduce((a,s)=>a+s.netMs,0);
+    const cappedMs=ss.reduce((a,s)=>a+Math.min(s.netMs,MAX_SESSION_MS),0);
+    const hasStale=ss.some(s=>s.netMs>MAX_SESSION_MS);
     html+=`<tr>
-      <td style="${tdStyle}font-weight:600;">${line.so||'—'}</td>
+      <td style="${tdStyle}font-weight:700;">${line.so||'—'}</td>
       <td style="${tdStyle}">${line.item||'—'}</td>
       <td style="${tdStyle}text-align:right;">${line.qty||'—'}</td>
-      <td style="${tdStyle}font-weight:600;color:var(--blue);">${_fmtMs(totalLabor)}</td>
       ${allGrps.map(g=>{
         const st=stations[g];
-        if(!st||(!st.laborMs&&!st.elapsedMs))return`<td style="${tdStyle}color:var(--txt3);">—</td>`;
-        const queueMs=st.elapsedMs-st.laborMs;
+        if(!st||(!st.laborMs&&!st.elapsedMs))return`<td style="${tdStyle}color:var(--txt3);text-align:center;">—</td>`;
+        const cappedLabor=Math.min(st.laborMs,MAX_SESSION_MS);
+        const stale=st.laborMs>MAX_SESSION_MS;
         return`<td style="${tdStyle}">
-          <div style="font-size:11px;color:var(--blue);font-weight:600;">⚡ ${_fmtMs(st.laborMs)}</div>
+          <div style="font-size:12px;color:var(--blue);font-weight:600;">⚡ ${_fmtMs(cappedLabor)}${stale?'<span style="color:var(--amber);font-size:9px;margin-left:3px;">⚠</span>':''}</div>
           ${st.elapsedMs?`<div style="font-size:10px;color:var(--txt3);">⏱ ${_fmtMs(st.elapsedMs)}</div>`:''}
-          ${[...st.workers].length?`<div style="font-size:10px;color:var(--txt2);">${[...st.workers].join(', ')}</div>`:''}
+          ${[...st.workers].length?`<div style="font-size:10px;color:var(--txt2);margin-top:2px;">${[...st.workers].join(', ')}</div>`:''}
         </td>`;
       }).join('')}
+      <td style="${tdStyle}font-weight:700;color:var(--blue);background:var(--blue-lt);text-align:center;">${_fmtMs(cappedMs)}${hasStale?'<div style="font-size:9px;color:var(--amber);">⚠ stale</div>':''}</td>
     </tr>`;
   });
-  html+=`</tbody></table>`;
-  html+=`<div style="font-size:11px;color:var(--txt3);margin-top:8px;">⚡ = labor (touch time) &nbsp;·&nbsp; ⏱ = total station elapsed</div>`;
+  html+=`</tbody></table></div>`;
+  html+=`<div style="font-size:11px;color:var(--txt3);margin-top:8px;">⚡ = labor (touch time) &nbsp;·&nbsp; ⏱ = total station elapsed &nbsp;·&nbsp; ⚠ = session >12h (capped)</div>`;
   body.innerHTML=html;
 }
 
@@ -6958,7 +6978,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v51 — service worker + DB done_at guard';
+const BUILD_TAG  = 'v52 — labor UI overhaul + card scan on DONE';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7206,6 +7226,55 @@ async function laborStartAction(){
 
 
 let _finishSession=null; // {sessionId,totalPauseMs,workerId} when awaiting finish card scan
+let _pendingDone=null;  // pending DONE action waiting for card scan confirmation
+
+function _showDoneCardScan(activeSessions){
+  // Show a card scan overlay on top of everything to confirm DONE
+  const workerNames=activeSessions.map(s=>{const w=workersList.find(x=>x.id===s.worker_id);return w?w.name:'?';}).join(', ');
+  const workerIds=new Set(activeSessions.map(s=>s.worker_id));
+  const div=document.createElement('div');
+  div.id='doneCardScanOverlay';
+  div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9998;display:flex;align-items:center;justify-content:center;';
+  div.innerHTML=`<div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:340px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+    <div style="font-size:32px;margin-bottom:8px;">🪪</div>
+    <div style="font-size:16px;font-weight:700;color:var(--txt1);margin-bottom:6px;">Scan Card to Confirm DONE</div>
+    <div style="font-size:12px;color:var(--txt2);margin-bottom:16px;">Quet the de xac nhan xong<br><strong>${workerNames}</strong></div>
+    <div id="doneCardMsg" style="font-size:13px;color:var(--txt3);margin-bottom:12px;">Hold card to reader / Quet the</div>
+    <input id="doneCardInput" type="text" autocomplete="off" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" oninput="_doneCardInput(this.value,${JSON.stringify([...workerIds])})"/>
+    <button onclick="_cancelDoneCardScan()" style="padding:10px 24px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:8px;font-size:13px;cursor:pointer;">Cancel / Huy</button>
+  </div>`;
+  document.body.appendChild(div);
+  setTimeout(()=>{const inp=document.getElementById('doneCardInput');if(inp)inp.focus();},100);
+}
+
+function _doneCardInput(val,workerIds){
+  const uid=(val||'').trim().toUpperCase().replace(/\s/g,'');
+  if(uid.length<14)return;
+  const inp=document.getElementById('doneCardInput');if(inp)inp.value='';
+  const w=workersList.find(x=>x.uid.toUpperCase().replace(/\s/g,'')===uid);
+  const msg=document.getElementById('doneCardMsg');
+  if(w&&workerIds.includes(w.id)){
+    if(msg)msg.innerHTML=`<span style="color:var(--green);">✓ ${w.name} confirmed</span>`;
+    setTimeout(()=>{_cancelDoneCardScan(true);},600);
+  } else if(w){
+    if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${w.name}</span>`;
+  } else {
+    if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Card not found: ${uid}</span>`;
+  }
+}
+
+function _cancelDoneCardScan(confirmed=false){
+  const el=document.getElementById('doneCardScanOverlay');
+  if(el)el.remove();
+  if(confirmed&&_pendingDone){
+    const {sentQty,remaining,j,availableQty,sid}=_pendingDone;
+    _pendingDone=null;
+    executeDone(sid,sentQty,remaining,remaining===0&&j.group===FINAL,j,availableQty);
+  } else {
+    _pendingDone=null;
+    showToast('DONE cancelled / Huy bo','red');
+  }
+}
 
 function laborFinishWithCard(sessionId,totalPauseMs,workerId){
   const body=document.getElementById('laborModalBody');
