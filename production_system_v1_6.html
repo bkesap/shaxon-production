@@ -6326,7 +6326,7 @@ async function checkShiftEnd(){
       try{
         for(const j of activeJobs){
           const add=activeMs(j.startedAt);
-          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId);
+          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId).is('done_at',null);
         }
         await loadAll();
         showToast('⏸ Shift ended — '+activeJobs.length+' job(s) paused / Ca ket thuc — tam dung','red');
@@ -6352,7 +6352,7 @@ async function checkShiftEnd(){
       setSyncDot('syncing');
       try{
         for(const j of pausedJobs){
-          await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId);
+          await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId).is('done_at',null);
         }
         await loadAll('user');
         showToast('▶ Shift started — '+pausedJobs.length+' job(s) resumed / Ca bat dau','green');
@@ -6958,7 +6958,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v49 — cache-bust reload';
+const BUILD_TAG  = 'v50 — DB-level done_at guard on shift pause/resume';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
