@@ -3424,7 +3424,7 @@ function renderItemHistory(){
         <td style="${td}font-weight:700;color:var(--blue);">${formatMs(e.totalWork)}</td>
         <td style="${td}font-weight:600;color:${e.totalQueue>0?'#e65100':'var(--txt3)'};">${e.totalQueue>0?formatMs(e.totalQueue):'—'}</td>
         <td style="${td}color:var(--txt2);">${perUnit}</td>
-        <td style="${tdL}color:var(--txt3);font-size:10px;">${[...e.soSet].join(', ')}</td>
+        <td style="${tdL}color:var(--txt1);font-size:12px;">${[...e.soSet].join(', ')}</td>
       </tr>`;
     }).join('')}
     </tbody>
@@ -3627,80 +3627,109 @@ function exportLaborCSV(){
 function renderAnalytics(){
   const body=document.getElementById('analyticsBody');
   if(!body)return;
-  const TEAM_GROUPS=['Cutting','Part Pull','C1','C2','C3','C4','QC','Testing / Packing'];
-  const NET_SHIFT_TOTAL_MS=420*60*1000; // 7 saat net (molalar düşüldü)
 
-  // Vardiya başından şu ana kadar geçen net süre (dinamik kapasite için)
+  const STAGES=[
+    {name:'Prep',teams:['Cutting','Part Pull']},
+    {name:'Production',teams:['C1','C2','C3','C4']},
+    {name:'Finish',teams:['Testing / Packing']}
+  ];
+  const ALL_TEAMS=[].concat(...STAGES.map(s=>s.teams));
+  const ALIVE=new Set(['active','paused','waiting','queue']);
   const now=Date.now();
-  const todayStr=new Date().toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'});
-  const shiftStartMs=new Date(`${todayStr}T${shiftStart||'08:00'}:00`).getTime();
-  const elapsedSinceShiftStart=Math.max(0,now-shiftStartMs);
-  // Net kapasite çarpanı: vardiyadan ne kadar geçti / toplam vardiya (max 1.0)
-  const shiftFraction=Math.min(1,elapsedSinceShiftStart/NET_SHIFT_TOTAL_MS);
 
-  // Bugünün başlangıcı (Pacific)
-  const todayStartMs=new Date(`${todayStr}T00:00:00`).getTime();
+  // Aggregate per-team
+  const stats=new Map();
+  for(const t of ALL_TEAMS)stats.set(t,{activeOrders:new Set(),queueOrders:new Set(),activePcs:0,queuePcs:0,activeStations:0,queueCount:0,elapsedMs:0});
 
-  // Takım bazlı metrikler
-  const stats={};
-  TEAM_GROUPS.forEach(t=>{stats[t]={elapsed:0,activeCount:0,queueCount:0,queueWaitMs:0,doneQty:0,people:0};});
-
-  lines.forEach(l=>{
-    const lineQty=parseQty(l.qty)||0;
-    (l.stations||[]).forEach(s=>{
-      if(!stats[s.grp])return;
-      const st=stats[s.grp];
-      // Only count currently active stations
-      if(s.state==='active'&&s.started_at){
-        st.elapsed+=activeMs(s.started_at,now);
-        st.activeCount++;
-        st.doneQty+=lineQty;
+  for(const line of lines){
+    if(line.fully_done)continue;
+    const qty=parseQty(line.qty)||0;
+    for(const s of (line.stations||[])){
+      if(!stats.has(s.grp))continue;
+      const st=stats.get(s.grp);
+      if(s.state==='active'||s.state==='paused'||s.state==='waiting'){
+        st.activeOrders.add(line.id);
+        st.activePcs+=qty;
+        st.activeStations++;
+        if(s.state==='active'&&s.started_at)st.elapsedMs+=activeMs(s.started_at,now);
       } else if(s.state==='queue'){
+        st.queueOrders.add(line.id);
+        st.queuePcs+=qty;
         st.queueCount++;
-        if(s.created_at){
-          const entered=new Date(s.created_at).getTime();
-          if(entered>0)st.queueWaitMs+=Math.max(0,now-entered);
-        }
       }
-    });
-  });
+    }
+  }
 
-  // İşçi sayısı
-  TEAM_GROUPS.forEach(t=>{
+  // ── FLOW DIAGRAM ──
+  const boxStyle='flex:1;min-width:160px;background:var(--bg1);border:1px solid var(--bdr2);border-radius:10px;padding:14px 16px;';
+  const labelStyle='font-size:13px;font-weight:700;color:var(--txt1);margin-bottom:10px;';
+  const rowStyle='display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;';
+  const keyStyle='color:var(--txt3);';
+  const valStyle='font-weight:600;color:var(--txt1);';
+
+  function makeBox(team){
+    const st=stats.get(team);
+    const hc=stationHeadcountMap.get(team);
+    const people=hc?(Number(hc.people_count)||0):0;
+    const aO=st.activeOrders.size, qO=st.queueOrders.size;
+    const aPcs=st.activePcs, qPcs=st.queuePcs;
+    return `<div style="${boxStyle}">
+      <div style="${labelStyle}">${team}</div>
+      <div style="${rowStyle}"><span style="${keyStyle}">People</span><span style="${valStyle}">${people||'—'}</span></div>
+      <div style="${rowStyle}"><span style="${keyStyle}">Active orders</span><span style="${valStyle}">${aO||'—'}</span></div>
+      <div style="${rowStyle}"><span style="${keyStyle}">Active pcs</span><span style="${valStyle}">${aPcs?aPcs.toLocaleString():'—'}</span></div>
+      ${qO?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bdr3);">
+        <div style="${rowStyle}"><span style="${keyStyle}">Queue orders</span><span style="font-weight:600;color:var(--amber);">${qO}</span></div>
+        <div style="${rowStyle}"><span style="${keyStyle}">Queue pcs</span><span style="font-weight:600;color:var(--amber);">${qPcs.toLocaleString()}</span></div>
+      </div>`:''}
+    </div>`;
+  }
+
+  let flowHtml='<div style="display:flex;flex-direction:column;gap:8px;max-width:1200px;margin:0 auto 32px;">';
+  for(let i=0;i<STAGES.length;i++){
+    const stage=STAGES[i];
+    flowHtml+=`<div>
+      <div style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">${stage.name}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">${stage.teams.map(makeBox).join('')}</div>
+    </div>`;
+    if(i<STAGES.length-1)flowHtml+=`<div style="text-align:center;color:var(--txt3);font-size:20px;line-height:1;padding:4px 0;">↓</div>`;
+  }
+  flowHtml+='</div>';
+
+  // ── DETAIL TABLE ──
+  const th='padding:7px 12px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;background:var(--bg2);border-bottom:2px solid var(--bdr2);white-space:nowrap;';
+  const td='padding:7px 12px;font-size:12px;border-bottom:1px solid var(--bdr3);';
+
+  const tableRows=ALL_TEAMS.map(t=>{
+    const st=stats.get(t);
     const hc=stationHeadcountMap.get(t);
-    stats[t].people=hc?(Number(hc.people_count)||0):0;
-  });
-
-  const rows=TEAM_GROUPS.map(t=>{
-    const s=stats[t];
-    if(!s.elapsed&&!s.queueCount&&!s.activeCount)return'';
-    const qWait=s.queueWaitMs>0?formatMs(s.queueWaitMs):'—';
-    const peopleStr=s.people>0?`${s.people}`:'—';
-    return`<tr style="border-bottom:1px solid var(--bdr3);">
-      <td style="padding:8px 14px;font-size:13px;font-weight:600;color:var(--blue);white-space:nowrap;">${t}</td>
-      <td style="padding:8px 10px;font-size:12px;color:var(--txt2);text-align:center;">${peopleStr}</td>
-      <td style="padding:8px 10px;font-size:12px;font-weight:600;color:var(--blue);white-space:nowrap;">${s.elapsed?formatMs(s.elapsed):'—'}</td>
-      <td style="padding:8px 10px;font-size:12px;color:var(--txt2);text-align:center;">${s.activeCount||'—'}</td>
-      <td style="padding:8px 10px;font-size:12px;color:var(--txt2);text-align:right;">${s.doneQty?s.doneQty.toLocaleString()+' pcs':'—'}</td>
-      <td style="padding:8px 10px;font-size:12px;font-weight:${s.queueCount>0?'600':'400'};color:${s.queueCount>0?'var(--amber)':'var(--txt3)'};white-space:nowrap;">${qWait}${s.queueCount?` <span style="font-size:10px;font-weight:400;">(${s.queueCount})</span>`:''}</td>
-      <td style="padding:8px 10px;font-size:11px;color:var(--txt3);font-style:italic;">Coming soon</td>
+    const people=hc?(Number(hc.people_count)||0):0;
+    if(!st.activeOrders.size&&!st.queueCount)return'';
+    return`<tr>
+      <td style="${td}font-weight:600;">${t}</td>
+      <td style="${td}text-align:center;">${people||'—'}</td>
+      <td style="${td}text-align:center;">${st.activeOrders.size||'—'}</td>
+      <td style="${td}text-align:right;">${st.activePcs?st.activePcs.toLocaleString()+' pcs':'—'}</td>
+      <td style="${td}text-align:center;${st.queueCount?'color:var(--amber);font-weight:600;':''}">${st.queueCount||'—'}</td>
+      <td style="${td}text-align:right;${st.queuePcs?'color:var(--amber);font-weight:600;':''}">${st.queuePcs?st.queuePcs.toLocaleString()+' pcs':'—'}</td>
+      <td style="${td}color:var(--blue);font-weight:600;">${st.elapsedMs?formatMs(st.elapsedMs):'—'}</td>
     </tr>`;
   }).join('');
 
-  body.innerHTML=rows
-    ?`<table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="background:var(--bg2);border-bottom:2px solid var(--bdr3);">
-          <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Team</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:center;">People</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:left;">Active Time / Thoi gian</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:center;">Active Items</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;text-align:right;">Qty in Progress</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Queue Wait / Cho doi</th>
-          <th style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">RFID Labor</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`
-    :'<div style="text-align:center;color:var(--txt3);padding:40px;">No active items</div>';
+  const tableHtml=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;">
+    <thead><tr>
+      <th style="${th}text-align:left;">Station</th>
+      <th style="${th}text-align:center;">People</th>
+      <th style="${th}text-align:center;">Active Orders</th>
+      <th style="${th}text-align:right;">Active Pcs</th>
+      <th style="${th}text-align:center;">Queue Orders</th>
+      <th style="${th}text-align:right;">Queue Pcs</th>
+      <th style="${th}text-align:left;">Elapsed (active)</th>
+    </tr></thead>
+    <tbody>${tableRows||'<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--txt3);">No active items</td></tr>'}</tbody>
+  </table></div>`;
+
+  body.innerHTML=flowHtml+tableHtml;
 }
 
 function renderProductionFlow(){
