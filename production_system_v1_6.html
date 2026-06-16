@@ -1401,7 +1401,8 @@ function showPage(p,el){
   if(p==='finished')loadFinishedOrders();
   if(p==='queue')renderQueue();
   if(p==='worker'&&typeof renderWorker==='function')renderWorker();
-  if(p==='admin')renderAdmin();
+  if(p==='admin'){loadAll().then(()=>renderAdmin());}
+
   if(p==='daily')renderDaily();
   if(p==='schedule'){
     // Restore filter panel open/closed state from previous session
