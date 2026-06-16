@@ -2115,11 +2115,15 @@ async function confirmPartPull(yes){
 
 // ── PAUSE / RESUME ────────────────────────────────────────────────────────────
 async function pauseJob_impl(sid){
+  // v1.6: pause is now a server RPC (FOR UPDATE lock, state-idempotent,
+  // server-computed elapsed). No client-side elapsed math = no double-add.
+  // persist:false → retries on a network blip but never re-fires a stale pause.
   const j=jobs.find(x=>x.stationId===sid);if(!j)return;
-  const add=activeMs(j.startedAt);
   setSyncDot('syncing');
-  try{await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',sid);loadAll();}
-  catch(e){setSyncDot('error');showToast('Error','red');}
+  try{
+    await rpcCall('rpc_pause_station',{p_station_id:sid,p_client_op_id:newOpId()},{persist:false});
+    loadAll();
+  }catch(e){setSyncDot('error');showToast('Error','red');}
 }
 async function resumeJob_impl(sid){
   // Guard: do not resume a station that was already done.
@@ -2127,14 +2131,20 @@ async function resumeJob_impl(sid){
   // done_at (duplicate-take that never got closed). Resuming it re-stamps
   // started_at to now and makes a finished job look alive again (the 8AM
   // "who touched it" mystery). Block both cases.
+  // v1.6: resume is now a server RPC. The ghost guard is ALSO enforced
+  // server-side (state='done' OR done_at set => 'blocked_done'), so a stale
+  // replay or a race can no longer revive a finished station.
   const j=jobs.find(x=>x.stationId===sid)||buildJobForStation(sid);
   if(j&&(j.state==='done'||j.doneAt)){
     showToast('Cannot resume — this station is already completed. Use Find Inconsistencies to close it.','red');
     return;
   }
   setSyncDot('syncing');
-  try{await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',sid);loadAll();}
-  catch(e){setSyncDot('error');showToast('Error','red');}
+  try{
+    const r=await rpcCall('rpc_resume_station',{p_station_id:sid,p_client_op_id:newOpId()},{persist:false});
+    if(r&&r.status==='blocked_done'){showToast('Cannot resume — this station is already completed.','red');}
+    loadAll();
+  }catch(e){setSyncDot('error');showToast('Error','red');}
 }
 
 // ── DONE — open qty modal ────────────────────────────────────────────────────
