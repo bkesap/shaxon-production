@@ -3351,51 +3351,84 @@ function renderItemHistory(){
   if(!body)return;
   const search=(document.getElementById('itemHistorySearch')?.value||'').trim().toUpperCase();
 
-  // Aggregate elapsed per item_no across all done stations
+  const WORK_COLS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
+  const WORK_LABELS=['Cutting','Part Pull','C1','C2','C3','C4','T/P'];
+  // Flow order for queue wait: Prep → C-team → T/P
+  const PREP_GRPS=new Set(['Cutting','Part Pull']);
+  const CTEAM_GRPS=new Set(['C1','C2','C3','C4']);
+  const FINAL_GRP='Testing / Packing';
+
   const itemMap={};
   lines.forEach(l=>{
     const key=l.item||'—';
     if(search&&!key.toUpperCase().includes(search))return;
-    if(!itemMap[key])itemMap[key]={item:key,elapsed:0,stationCount:0,soSet:new Set(),totalQty:0};
-    itemMap[key].totalQty+=parseQty(l.qty)||0;
+    if(!itemMap[key])itemMap[key]={item:key,cols:{},totalWork:0,totalQueue:0,soSet:new Set(),totalQty:0};
     const entry=itemMap[key];
+    entry.totalQty+=parseQty(l.qty)||0;
     entry.soSet.add(l.so);
-    (l.stations||[]).forEach(s=>{
-      if(s.state==='done'&&s.elapsed_ms){
-        entry.elapsed+=s.elapsed_ms;
-        entry.stationCount++;
-      } else if(s.state==='active'&&s.started_at){
-        entry.elapsed+=activeMs(s.started_at,Date.now());
-        entry.stationCount++;
-      }
+
+    const sts=l.stations||[];
+    // elapsed per station group
+    sts.forEach(s=>{
+      const grp=s.grp||'';
+      const col=WORK_COLS.find(c=>grp===c)||(WORK_COLS.find(c=>c==='Testing / Packing'&&/test|pack/i.test(grp)));
+      if(!col)return;
+      let ms=0;
+      if(s.state==='done'&&s.elapsed_ms)ms=s.elapsed_ms;
+      else if(s.state==='active'&&s.started_at)ms=activeMs(s.started_at,Date.now());
+      if(ms){entry.cols[col]=(entry.cols[col]||0)+ms;entry.totalWork+=ms;}
     });
+
+    // Queue wait: gap between groups
+    // Prep→Cteam: max(prep done_at) → min(cteam started_at)
+    const prepDone=sts.filter(s=>PREP_GRPS.has(s.grp)&&s.done_at).map(s=>new Date(s.done_at).getTime());
+    const cteamStart=sts.filter(s=>CTEAM_GRPS.has(s.grp)&&s.started_at&&s.state!=='queue').map(s=>new Date(s.started_at).getTime());
+    if(prepDone.length&&cteamStart.length){
+      const gap=Math.min(...cteamStart)-Math.max(...prepDone);
+      if(gap>0)entry.totalQueue+=gap;
+    }
+    // Cteam→TP: max(cteam done_at) → tp started_at
+    const cteamDone=sts.filter(s=>CTEAM_GRPS.has(s.grp)&&s.done_at).map(s=>new Date(s.done_at).getTime());
+    const tpSt=sts.find(s=>/test|pack/i.test(s.grp)&&s.started_at&&s.state!=='queue');
+    if(cteamDone.length&&tpSt){
+      const gap=new Date(tpSt.started_at).getTime()-Math.max(...cteamDone);
+      if(gap>0)entry.totalQueue+=gap;
+    }
   });
 
-  const sorted=Object.values(itemMap).filter(e=>e.elapsed>0).sort((a,b)=>b.elapsed-a.elapsed);
+  const sorted=Object.values(itemMap).filter(e=>e.totalWork>0||e.totalQueue>0).sort((a,b)=>b.totalWork-a.totalWork);
   if(!sorted.length){body.innerHTML='<div style="text-align:center;color:var(--txt3);padding:40px;">No data</div>';return;}
 
-  body.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead style="position:sticky;top:0;z-index:2;">
-      <tr style="background:var(--bg2);border-bottom:2px solid var(--bdr3);">
-        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Item No</th>
-        <th style="padding:9px 16px;text-align:right;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Total Qty</th>
-        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Total Elapsed</th>
-        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Per Unit</th>
-        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Stations</th>
-        <th style="padding:9px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;">Orders (SO)</th>
-      </tr>
-    </thead>
+  const th='padding:7px 8px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;background:var(--bg2);border-bottom:2px solid var(--bdr2);white-space:nowrap;text-align:center;';
+  const td='padding:6px 8px;font-size:11px;border-bottom:1px solid var(--bdr3);text-align:center;';
+  const tdL='padding:6px 10px;font-size:11px;border-bottom:1px solid var(--bdr3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;';
+
+  body.innerHTML=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
+    <thead><tr>
+      <th style="${th}text-align:left;">Item No</th>
+      <th style="${th}">Qty</th>
+      ${WORK_LABELS.map(l=>`<th style="${th}">${l}</th>`).join('')}
+      <th style="${th}color:var(--blue);">Total Work</th>
+      <th style="${th}color:#e65100;">Queue Wait</th>
+      <th style="${th}">Per Unit</th>
+      <th style="${th}text-align:left;">Orders</th>
+    </tr></thead>
     <tbody>
-      ${sorted.map((e,i)=>`<tr style="border-bottom:1px solid var(--bdr3);${i%2?'background:var(--bg2)':''}">
-        <td style="padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--txt1);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.item}</td>
-        <td style="padding:9px 16px;text-align:right;color:var(--txt2);">${e.totalQty?e.totalQty.toLocaleString()+' pcs':'—'}</td>
-        <td style="padding:9px 16px;font-weight:600;color:var(--blue);">${formatMs(e.elapsed)}</td>
-        <td style="padding:9px 16px;color:var(--txt2);font-variant-numeric:tabular-nums;">${e.totalQty>0?formatMs(Math.round(e.elapsed/e.totalQty))+' / pcs':'—'}</td>
-        <td style="padding:9px 16px;color:var(--txt2);">${e.stationCount}</td>
-        <td style="padding:9px 16px;color:var(--txt2);">${[...e.soSet].join(', ')}</td>
-      </tr>`).join('')}
+    ${sorted.map((e,i)=>{
+      const bg=i%2?'background:var(--bg2);':'';
+      const perUnit=e.totalQty>0?formatMs(Math.round(e.totalWork/e.totalQty))+' / pc':'—';
+      return `<tr style="${bg}">
+        <td style="${tdL}">${e.item}</td>
+        <td style="${td}color:var(--txt2);">${e.totalQty?e.totalQty.toLocaleString()+' pcs':'—'}</td>
+        ${WORK_COLS.map(c=>{const ms=e.cols[c]||0;return`<td style="${td}${ms?'color:var(--txt1);':'color:var(--txt3);'}">${ms?formatMs(ms):'—'}</td>`;}).join('')}
+        <td style="${td}font-weight:700;color:var(--blue);">${formatMs(e.totalWork)}</td>
+        <td style="${td}font-weight:600;color:${e.totalQueue>0?'#e65100':'var(--txt3)'};">${e.totalQueue>0?formatMs(e.totalQueue):'—'}</td>
+        <td style="${td}color:var(--txt2);">${perUnit}</td>
+        <td style="${tdL}color:var(--txt3);font-size:10px;">${[...e.soSet].join(', ')}</td>
+      </tr>`;
+    }).join('')}
     </tbody>
-  </table>`;
+  </table></div>`;
 }
 
 // ── LABOR TIME PAGE ──────────────────────────────────────────
