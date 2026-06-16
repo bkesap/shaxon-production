@@ -2799,7 +2799,7 @@ function renderWorker(){
 
     return `<div class="job-card ${cardCls}" data-station-id="${j.stationId}" data-label="${j.so} · ${j.item}" oncontextmenu="return false;">
       <div class="sl ${slCls}"></div>
-      <div class="jc-so">${j.so}${(()=>{const m=soMetaMap.get(String(j.so).toUpperCase());const sv=m&&m.agent_service;return sv&&sv!=='GROUND'?`<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:5px;background:#FFEBEE;color:#c62828;">${sv}</span>`:'';})()}</div>
+      <div class="jc-so">${j.so}${(()=>{const m=soMetaMap.get(String(j.so).toUpperCase());const sv=m&&m.agent_service;if(!sv||sv==='GROUND')return '';const sdRaw=m&&m.ship_date;const sdFmt=sdRaw?new Date(sdRaw+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';return `<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:5px;background:#FFEBEE;color:#c62828;">${sv}</span>${sdFmt?`<span style="font-size:9px;margin-left:4px;color:#c62828;font-weight:600;">${sdFmt}</span>`:''}`})()}</div>
       ${teamTag}
       <div class="jc-divider"></div>
       <div class="jc-row">
