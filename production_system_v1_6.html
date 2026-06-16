@@ -46,6 +46,16 @@ body{font-family:var(--font);background:var(--bg2);}
 .nav-tab .vn{font-size:9px;font-weight:400;font-style:italic;opacity:.7;}
 .nav-tab.active{color:#fff;border-bottom-color:var(--red-brand);}
 .nav-tab:hover{color:#fff;}
+.nav-dropdown{position:relative;display:flex;align-items:stretch;}
+.nav-dropdown-trigger{padding:12px 16px;font-size:13px;font-weight:500;cursor:pointer;color:rgba(255,255,255,.65);border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;white-space:nowrap;transition:color .15s;user-select:none;}
+.nav-dropdown-trigger:hover,.nav-dropdown.open .nav-dropdown-trigger{color:#fff;}
+.nav-dropdown.active .nav-dropdown-trigger{color:#fff;border-bottom:2px solid var(--red-brand);}
+.nav-dropdown-arrow{font-size:8px;opacity:.7;}
+.nav-dropdown-menu{display:none;position:absolute;top:100%;left:0;background:#1565c0;border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.3);min-width:180px;z-index:999;overflow:hidden;}
+.nav-dropdown.open .nav-dropdown-menu{display:block;}
+.nav-dropdown-item{padding:11px 18px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;white-space:nowrap;transition:background .12s,color .12s;}
+.nav-dropdown-item:hover{background:rgba(255,255,255,.12);color:#fff;}
+.nav-dropdown-item.active{background:rgba(255,255,255,.15);color:#fff;font-weight:700;}
 .queue-badge{position:absolute;top:7px;right:6px;min-width:16px;height:16px;background:var(--red-brand);color:#fff;border-radius:8px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;}
 .queue-badge.on{display:flex;}
 .nav-spacer{flex:1;}
@@ -439,14 +449,29 @@ body{font-family:var(--font);background:var(--bg2);}
   </div>
   <div class="nav-tab active" onclick="showPage('worker',this)">Teams <span class="vn">Nhom</span></div>
   <div class="nav-tab" onclick="showPage('queue',this)">Queue <span class="vn">Hang cho</span><span class="queue-badge" id="queueBadge">0</span></div>
-  <div class="nav-tab" onclick="showPage('dash',this)">Dashboard</div>
-  <div class="nav-tab" onclick="showPage('finished',this)">✅ Finished Orders</div>
-  <div class="nav-tab" onclick="showPage('daily',this)">Daily Data</div>
-  <div class="nav-tab" onclick="showPage('schedule',this)">📅 Schedule</div>
-  <div class="nav-tab" onclick="showPage('flow',this)">🔄 Production Flow</div>
-  <div class="nav-tab" onclick="showPage('analytics',this)">📊 Analytics</div>
-  <div class="nav-tab" onclick="showPage('labortime',this)">⏱ Labor</div>
-  <div class="nav-tab" onclick="showPage('itemhistory',this)">🕐 Item History</div>
+  <div class="nav-dropdown" id="navDdDash">
+    <div class="nav-dropdown-trigger" onclick="toggleNavDropdown('navDdDash')">Dashboard <span class="nav-dropdown-arrow">▼</span></div>
+    <div class="nav-dropdown-menu">
+      <div class="nav-dropdown-item" onclick="showPageDd('dash',this,'navDdDash')">📋 Open Orders</div>
+      <div class="nav-dropdown-item" onclick="showPageDd('finished',this,'navDdDash')">✅ Finished Orders</div>
+    </div>
+  </div>
+  <div class="nav-dropdown" id="navDdSchedule">
+    <div class="nav-dropdown-trigger" onclick="toggleNavDropdown('navDdSchedule')">📅 Schedule <span class="nav-dropdown-arrow">▼</span></div>
+    <div class="nav-dropdown-menu">
+      <div class="nav-dropdown-item" onclick="showPageDd('schedule',this,'navDdSchedule')">📅 Schedule</div>
+      <div class="nav-dropdown-item" onclick="showPageDd('daily',this,'navDdSchedule')">Daily Data</div>
+    </div>
+  </div>
+  <div class="nav-dropdown" id="navDdLabor">
+    <div class="nav-dropdown-trigger" onclick="toggleNavDropdown('navDdLabor')">⏱ Labor Analysis <span class="nav-dropdown-arrow">▼</span></div>
+    <div class="nav-dropdown-menu">
+      <div class="nav-dropdown-item" onclick="showPageDd('labortime',this,'navDdLabor')">⏱ Labor</div>
+      <div class="nav-dropdown-item" onclick="showPageDd('analytics',this,'navDdLabor')">📊 Analytics</div>
+      <div class="nav-dropdown-item" onclick="showPageDd('itemhistory',this,'navDdLabor')">🕐 Item History</div>
+      <div class="nav-dropdown-item" onclick="showPageDd('flow',this,'navDdLabor')">🔄 Production Flow</div>
+    </div>
+  </div>
   <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
   <div style="flex:1;"></div>
@@ -1324,9 +1349,44 @@ function setSyncDot(s){
 }
 const shortGrp=g=>g==='Testing / Packing'?'Test/Pack':g;
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+function toggleNavDropdown(id){
+  const dd=document.getElementById(id);
+  const isOpen=dd.classList.contains('open');
+  document.querySelectorAll('.nav-dropdown').forEach(d=>d.classList.remove('open'));
+  if(!isOpen)dd.classList.add('open');
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.nav-dropdown'))
+    document.querySelectorAll('.nav-dropdown').forEach(d=>d.classList.remove('open'));
+});
+function showPageDd(p,el,ddId){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav-dropdown').forEach(x=>x.classList.remove('active','open'));
+  document.querySelectorAll('.nav-dropdown-item').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  el.classList.add('active');
+  document.getElementById(ddId).classList.add('active');
+  ['jobSearch','queueSearch','dashSearch','finishedSearch','schedSearch','adminSearch'].forEach(id=>{
+    const _b=document.getElementById(id);if(_b&&_b.value)_b.value='';
+  });
+  if(p==='dash')renderDash();
+  if(p==='finished')loadFinishedOrders();
+  if(p==='analytics')renderAnalytics();
+  if(p==='flow')renderFlow&&renderFlow();
+  if(p==='labortime')renderLaborTime();
+  if(p==='itemhistory')renderItemHistory&&renderItemHistory();
+  if(p==='daily')renderDaily();
+  if(p==='schedule'){
+    try{const open=localStorage.getItem('shaxon_sched_filters_open')==='1';const panel=document.getElementById('schedFilterPanel');if(panel)panel.style.display=open?'flex':'none';}catch(_){}
+    renderSchedule();
+  }
+}
 function showPage(p,el){
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav-dropdown').forEach(x=>x.classList.remove('active','open'));
+  document.querySelectorAll('.nav-dropdown-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
   // Always clear EVERY search box on any page change. A leftover filter on
@@ -3466,35 +3526,49 @@ function _renderLaborByOrder(body,sessions,stRes,lineMap,stMap){
 }
 
 function _renderLaborByWorker(body,sessions){
+  const COLS=['Cutting','Part Pull','C1','C2','C3','C4','Testing / Packing'];
+  const COL_LABELS=['Cutting','Part Pull','C1','C2','C3','C4','T/P'];
+  // build worker × station matrix
   const byWorker={};
   sessions.forEach(s=>{
     const wid=s.worker_id;
-    if(!byWorker[wid])byWorker[wid]={worker:s.worker,sessions:[],totalMs:0};
-    byWorker[wid].sessions.push(s);
+    if(!byWorker[wid])byWorker[wid]={worker:s.worker,totalMs:0,cols:{}};
     byWorker[wid].totalMs+=s.netMs;
+    const grp=s.station?.grp||'';
+    // normalize T/P variations
+    const col=COLS.find(c=>grp===c||(c==='Testing / Packing'&&/test|pack/i.test(grp)))||null;
+    if(col){byWorker[wid].cols[col]=(byWorker[wid].cols[col]||0)+s.netMs;}
   });
   const rows=Object.values(byWorker).sort((a,b)=>b.totalMs-a.totalMs);
-  const thStyle='padding:6px 10px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);';
-  const tdStyle='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);';
-  let html=`<table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
+  const thStyle='padding:6px 8px;font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;background:var(--bg2);border-bottom:2px solid var(--bdr2);white-space:nowrap;';
+  const tdStyle='padding:6px 8px;font-size:11px;border-bottom:1px solid var(--bdr3);text-align:center;';
+  const tdName='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);font-weight:600;white-space:nowrap;';
+  const tdTotal='padding:6px 10px;font-size:12px;border-bottom:1px solid var(--bdr3);font-weight:700;color:var(--blue);white-space:nowrap;';
+  let html=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border-radius:10px;overflow:hidden;font-family:var(--font);">
     <thead><tr>
-      <th style="${thStyle}">Worker</th>
-      <th style="${thStyle}">Team</th>
-      <th style="${thStyle}">Sessions</th>
-      <th style="${thStyle}">Total Labor</th>
-      <th style="${thStyle}">Orders Worked</th>
+      <th style="${thStyle}text-align:left;">Worker</th>
+      ${COL_LABELS.map(l=>`<th style="${thStyle}">${l}</th>`).join('')}
+      <th style="${thStyle}color:var(--blue);">Total</th>
     </tr></thead><tbody>`;
-  rows.forEach(({worker,sessions:ss,totalMs})=>{
-    const orders=[...new Set(ss.map(s=>s.line?.so).filter(Boolean))];
+  rows.forEach(({worker,totalMs,cols})=>{
     html+=`<tr>
-      <td style="${tdStyle}font-weight:600;">${worker.name}</td>
-      <td style="${tdStyle}">${worker.team||'—'}</td>
-      <td style="${tdStyle}text-align:right;">${ss.length}</td>
-      <td style="${tdStyle}font-weight:600;color:var(--blue);">${_fmtMs(totalMs)}</td>
-      <td style="${tdStyle}font-size:11px;color:var(--txt2);">${orders.slice(0,5).join(', ')}${orders.length>5?` +${orders.length-5} more`:''}</td>
+      <td style="${tdName}">${worker.name}<span style="font-size:10px;color:var(--txt3);font-weight:400;margin-left:5px;">${worker.team||''}</span></td>
+      ${COLS.map(c=>{
+        const ms=cols[c]||0;
+        return `<td style="${tdStyle}${ms?'color:var(--txt1);':'color:var(--txt3);'}">${ms?_fmtMs(ms):'—'}</td>`;
+      }).join('')}
+      <td style="${tdTotal}">${_fmtMs(totalMs)}</td>
     </tr>`;
   });
-  html+=`</tbody></table>`;
+  // totals row
+  const colTotals=COLS.map(c=>rows.reduce((s,r)=>s+(r.cols[c]||0),0));
+  const grandTotal=rows.reduce((s,r)=>s+r.totalMs,0);
+  html+=`<tr style="background:var(--bg2);">
+    <td style="${tdName}color:var(--txt2);font-size:11px;">TOTAL</td>
+    ${colTotals.map(ms=>`<td style="${tdStyle}font-weight:700;color:var(--txt2);">${ms?_fmtMs(ms):'—'}</td>`).join('')}
+    <td style="${tdTotal}font-size:13px;">${_fmtMs(grandTotal)}</td>
+  </tr>`;
+  html+=`</tbody></table></div>`;
   body.innerHTML=html;
 }
 
