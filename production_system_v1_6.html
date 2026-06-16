@@ -5057,12 +5057,13 @@ function shipCodeToAgentService(code){
     'FEDGR',                        // FedEx Ground (alt code)
     'UPSG','UPSGCOM','UPSGRES',     // UPS Ground variants
     '507',                          // NuMark Freight
+    '700',                          // Cheapest / economy — treat as ground, no badge
   ]);
   if(nextDay.has(c))return 'NEXT DAY';
   if(priority.has(c))return 'PRIORITY';
   if(ground.has(c))return 'GROUND';
-  // Unknown code — return as-is so it still shows as a badge
-  return c||'GROUND';
+  // Unknown code — treat as ground (no badge) to avoid noise
+  return 'GROUND';
 }
 
 async function handleSOFile(event){
@@ -6532,8 +6533,7 @@ async function checkShiftEnd(){
       setSyncDot('syncing');
       try{
         for(const j of activeJobs){
-          const add=activeMs(j.startedAt);
-          await sb.from('stations').update({state:'paused',elapsed_ms:j.elapsed+add}).eq('id',j.stationId).is('done_at',null);
+          await rpcCall('rpc_pause_station',{p_station_id:j.stationId,p_client_op_id:newOpId()},{persist:false});
         }
         await loadAll();
         showToast('⏸ Shift ended — '+activeJobs.length+' job(s) paused / Ca ket thuc — tam dung','red');
@@ -6544,22 +6544,18 @@ async function checkShiftEnd(){
   }
 
   // ── Shift STARTED → resume all paused jobs
-  // localStorage key prevents re-firing on page reload within the same day
   const _shiftStartKey='shaxon_shift_started_'+new Date().toDateString();
   if(si.isActive&&!shiftStartNotified&&!localStorage.getItem(_shiftStartKey)){
     shiftStartNotified=true;
     localStorage.setItem(_shiftStartKey,'1');
     shiftEndNotified=false;
-    // Always fetch fresh data before resuming — stale jobs[] causes done
-    // stations (done_at set) to be re-activated if the device was closed and
-    // re-opened mid-shift (the "resurrection" bug).
     await loadAll('user');
     const pausedJobs=jobs.filter(j=>j.state==='paused'&&!j.doneAt);
     if(pausedJobs.length>0){
       setSyncDot('syncing');
       try{
         for(const j of pausedJobs){
-          await sb.from('stations').update({state:'active',started_at:new Date().toISOString()}).eq('id',j.stationId).is('done_at',null);
+          await rpcCall('rpc_resume_station',{p_station_id:j.stationId,p_client_op_id:newOpId()},{persist:false});
         }
         await loadAll('user');
         showToast('▶ Shift started — '+pausedJobs.length+' job(s) resumed / Ca bat dau','green');
