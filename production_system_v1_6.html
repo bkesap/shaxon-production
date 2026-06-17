@@ -4136,7 +4136,7 @@ function renderFinishedOrders(){
     const soLines=soMap[so];
     const total=soLines.length;
     const rows=soLines.map(l=>{
-      const allSt=l.stations.filter(s=>s.state!=='taken');
+      const allSt=l.stations.filter(s=>s.state!=='taken').sort((a,b)=>(a.started_at||'').localeCompare(b.started_at||''));
       const flowHtml=allSt.length?allSt.map((s,idx)=>{
         let cls='fb-done',labelSuffix=' ✓';
         if(s.state==='active'){cls='fb-active';labelSuffix=' ⚡';}
