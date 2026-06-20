@@ -3915,7 +3915,7 @@ function clearSchedFilters(){
 // is a no-op (skipped). Updates the local map so the row stays in sync
 // without forcing a full re-render.
 async function adminUpdateSO(){
-  const soNum=(document.getElementById('soEditNum')?.value||'').trim().toUpperCase();
+  const soNum=(document.getElementById('soEditNum')?.value||'').trim().toUpperCase().replace(/^S0/,'');
   const shipDate=document.getElementById('soEditDate')?.value||'';
   const sales=(document.getElementById('soEditSales')?.value||'').trim();
   const status=document.getElementById('soEditStatus');
@@ -6543,9 +6543,10 @@ async function checkShiftEnd(){
     }
   }
 
-  // ── Shift STARTED → resume all paused jobs
+  // ── Shift STARTED → resume all paused jobs (weekdays only)
   const _shiftStartKey='shaxon_shift_started_'+new Date().toDateString();
-  if(si.isActive&&!shiftStartNotified&&!localStorage.getItem(_shiftStartKey)){
+  const _dayOfWeek=new Date().getDay(); // 0=Sun,6=Sat
+  if(si.isActive&&!shiftStartNotified&&!localStorage.getItem(_shiftStartKey)&&_dayOfWeek!==0&&_dayOfWeek!==6){
     shiftStartNotified=true;
     localStorage.setItem(_shiftStartKey,'1');
     shiftEndNotified=false;
@@ -7172,7 +7173,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v53 — shift-start: REST fallback + RPC guard';
+const BUILD_TAG  = 'v54 — shift-start: weekday-only + REST fallback + SO S0 strip';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
