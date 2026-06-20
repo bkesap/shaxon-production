@@ -6528,19 +6528,21 @@ async function checkShiftEnd(){
   if(si.isEnded&&!shiftEndNotified){
     shiftEndNotified=true;
     shiftStartNotified=false;
-    const activeJobs=jobs.filter(j=>j.state==='active'&&!j.doneAt);
-    if(activeJobs.length>0){
-      setSyncDot('syncing');
-      try{
-        for(const j of activeJobs){
-          await rpcCall('rpc_pause_station',{p_station_id:j.stationId,p_client_op_id:newOpId()},{persist:false});
-        }
-        await loadAll();
-        showToast('⏸ Shift ended — '+activeJobs.length+' job(s) paused / Ca ket thuc — tam dung','red');
-      }catch(e){setSyncDot('error');}
-    } else {
+    setSyncDot('syncing');
+    try{
+      const {data:endResult,error:endErr}=await sb.rpc('rpc_shift_end');
+      if(endErr)throw endErr;
+      await loadAll();
+      const paused=endResult&&endResult.paused||0;
+      showToast('⏸ Shift ended — '+paused+' job(s) paused / Ca ket thuc — tam dung','red');
+    }catch(e){
+      // Fallback: direct REST PATCH
+      console.warn('[shift-end] rpc_shift_end failed, fallback:',e);
+      await sb.from('stations').update({state:'paused'}).eq('state','active').is('done_at',null);
+      await loadAll();
       showToast('⏰ Shift ended / Ca lam viec ket thuc','red');
     }
+    setSyncDot('');
   }
 
   // ── Shift STARTED → resume all paused jobs (weekdays only)
@@ -6555,22 +6557,20 @@ async function checkShiftEnd(){
     if(pausedJobs.length>0){
       setSyncDot('syncing');
       try{
-        // Try RPC first (has server-side guard). If schema cache is stale, fall back to REST PATCH.
-        const nowIso=new Date().toISOString();
-        let rpcFailed=false;
+        // Single server-side RPC — handles resume, phantom supersede, and cleanup atomically
+        let startResult=null;
         try{
-          for(const j of pausedJobs){
-            await rpcCall('rpc_resume_station',{p_station_id:j.stationId,p_client_op_id:newOpId()},{persist:false});
-          }
+          const {data,error:startErr}=await sb.rpc('rpc_shift_start',{p_shift_date:new Date().toISOString().split('T')[0]});
+          if(startErr)throw startErr;
+          startResult=data;
         }catch(rpcErr){
-          rpcFailed=true;
-          console.warn('[shift-start] rpc_resume_station failed, falling back to REST PATCH:',rpcErr);
-          // Fallback: direct bulk PATCH — reliable even when schema cache is stale
-          await sb.from('stations').update({state:'active',started_at:nowIso})
+          console.warn('[shift-start] rpc_shift_start failed, fallback REST PATCH:',rpcErr);
+          await sb.from('stations').update({state:'active',started_at:new Date().toISOString()})
             .eq('state','paused').is('done_at',null);
         }
         await loadAll('user');
-        showToast('▶ Shift started — '+pausedJobs.length+' job(s) resumed'+(rpcFailed?' (REST fallback)':'')+' / Ca bat dau','green');
+        const resumed=startResult&&startResult.resumed||pausedJobs.length;
+        showToast('▶ Shift started — '+resumed+' job(s) resumed / Ca bat dau','green');
       }catch(e){setSyncDot('error');}
     } else {
       showToast('🟢 Shift started / Ca lam viec bat dau','green');
@@ -7173,7 +7173,7 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v54 — shift-start: weekday-only + REST fallback + SO S0 strip';
+const BUILD_TAG  = 'v55 — server-side rpc_shift_start + rpc_shift_end';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
