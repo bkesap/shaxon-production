@@ -64,6 +64,33 @@ body{font-family:var(--font);background:var(--bg2);}
 .page{display:none;flex:1;overflow:hidden;flex-direction:column;}
 .page.active{display:flex;}
 
+/* BC ORDERS */
+.bc-order-row{border:1px solid var(--bdr3);border-radius:var(--r-md);margin-bottom:8px;background:var(--bg1);overflow:hidden;}
+.bc-order-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;}
+.bc-order-hdr:hover{background:var(--bg2);}
+.bc-order-no{font-size:14px;font-weight:700;color:var(--blue);min-width:70px;}
+.bc-order-desc{flex:1;font-size:13px;color:var(--txt1);font-weight:500;}
+.bc-order-src{font-size:12px;color:var(--txt3);background:var(--bg3);padding:2px 8px;border-radius:6px;}
+.bc-order-arr{font-size:11px;color:var(--txt3);}
+.bc-lines-wrap{border-top:1px solid var(--bdr3);padding:8px 12px 12px;}
+.bc-lines-hdr{display:flex;align-items:center;gap:8px;padding:6px 4px 8px;border-bottom:1px solid var(--bdr3);margin-bottom:6px;}
+.bc-chk-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);cursor:pointer;}
+.bc-line-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--bdr3);}
+.bc-line-row:last-child{border-bottom:none;}
+.bc-line-row.bc-line-routed{background:var(--blue-lt);}
+.bc-line-item{font-size:13px;font-weight:600;color:var(--txt1);min-width:120px;}
+.bc-line-desc{flex:1;font-size:12px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bc-line-qty{font-size:13px;font-weight:500;color:var(--blue-dk);min-width:60px;text-align:right;}
+.bc-route-btns{display:flex;gap:4px;}
+.bc-pp-btn,.bc-cut-btn{padding:4px 10px;border:1px solid var(--bdr2);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;background:var(--bg2);color:var(--txt2);}
+.bc-pp-btn.active{background:var(--green-lt);border-color:var(--green-bdr);color:var(--green);}
+.bc-cut-btn.active{background:var(--amber-lt);border-color:#ffcc80;color:var(--amber);}
+.bc-start-btn{padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;}
+.bc-stock{font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;min-width:70px;text-align:center;}
+.bc-stock-ok{background:var(--green-lt);color:var(--green);}
+.bc-stock-zero{background:var(--red-lt);color:var(--red);}
+.bc-stock-loading{font-size:11px;color:var(--txt3);}
+
 /* ENTRY BAR */
 .entry-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 14px;background:var(--bg1);border-bottom:1px solid var(--bdr3);flex-shrink:0;flex-wrap:wrap;}
 .ef{display:flex;flex-direction:column;gap:4px;position:relative;}
@@ -473,6 +500,8 @@ body{font-family:var(--font);background:var(--bg2);}
     </div>
   </div>
   <div class="nav-tab" id="chatTab" onclick="showPage('chat',this)">💬 Chat <span class="vn">Tin nhan</span><span class="queue-badge" id="chatBadge" style="background:#1976d2;">0</span></div>
+  <div class="nav-tab" onclick="showPage('bcorders',this)">🏭 BC Orders</div>
+  <div class="nav-tab" onclick="showPage('salesorders',this)">📋 Sales Orders</div>
   <div class="nav-tab" onclick="showPage('admin',this)">Admin 🔒</div>
   <div style="flex:1;"></div>
   <div id="pendingOpsBadge" class="pending-ops-badge" onclick="openPendingModal()" title="Tap to view / retry">0 pending sync</div>
@@ -490,6 +519,37 @@ body{font-family:var(--font);background:var(--bg2);}
       <button class="btn-ok" onclick="retryPendingNow()">↻ Retry Now / Thu lai</button>
       <button class="btn-ok" style="background:var(--red);" onclick="clearStuckPending()">🗑 Clear Stuck / Xoa</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ SALES ORDERS ══ -->
+<div class="page" id="page-salesorders">
+  <div style="padding:10px 16px;background:var(--bg1);border-bottom:1px solid var(--bdr3);display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+    <span style="font-size:14px;font-weight:700;color:var(--blue);">Sales Orders — Outstanding</span>
+    <button onclick="loadSalesOrders()" style="padding:6px 14px;border:none;border-radius:8px;background:var(--blue);color:#fff;font-size:13px;cursor:pointer;">↻ Refresh</button>
+    <span id="soStatusBC" style="font-size:12px;color:var(--txt3);"></span>
+  </div>
+  <div id="soListBC" style="flex:1;overflow-y:auto;padding:12px 16px;"></div>
+</div>
+
+<!-- ══ BC ORDERS ══ -->
+<div class="page" id="page-bcorders">
+  <div style="padding:10px 16px;background:var(--bg1);border-bottom:1px solid var(--bdr3);display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+    <span style="font-size:14px;font-weight:700;color:var(--blue);">Released Production Orders</span>
+    <input id="bcSearch" type="text" placeholder="Search order or SO..." oninput="renderBCOrders()" style="padding:6px 12px;border:1px solid var(--bdr2);border-radius:8px;font-size:13px;width:200px;outline:none;">
+    <select id="bcFilter" onchange="renderBCOrders()" style="padding:6px 10px;border:1px solid var(--bdr2);border-radius:8px;font-size:13px;background:var(--bg1);color:var(--txt1);outline:none;">
+      <option value="all">All Orders</option>
+      <option value="short">Short Only</option>
+      <option value="ready">Ready Only</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--txt2);cursor:pointer;">
+      <input type="checkbox" id="bcSortShortFirst" onchange="renderBCOrders()"> Short first
+    </label>
+    <span style="flex:1"></span>
+    <button id="bcRefreshBtn" onclick="loadBCOrders()" style="padding:6px 16px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Refresh</button>
+  </div>
+  <div id="bcOrderList" style="flex:1;overflow-y:auto;padding:12px 16px;">
+    <div style="padding:40px;text-align:center;color:#999;">Click Refresh to load orders from Business Central.</div>
   </div>
 </div>
 
@@ -1402,6 +1462,7 @@ function showPage(p,el){
   if(p==='queue')renderQueue();
   if(p==='worker'&&typeof renderWorker==='function')renderWorker();
   if(p==='admin'){loadAll().then(()=>renderAdmin());}
+  if(p==='salesorders')loadSalesOrders();
 
   if(p==='daily')renderDaily();
   if(p==='schedule'){
@@ -4511,6 +4572,22 @@ function renderAdmin(){
         </div>
       </div>
     </div>
+    <div class="admin-section" data-sec="bccheck">
+      <div class="admin-section-hdr" onclick="toggleAdminSection('bccheck')">📦 BC Material Check / Malzeme Kontrolu</div>
+      <div class="admin-section-body">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <label style="font-size:13px;color:var(--txt2);white-space:nowrap;">BC Proxy URL:</label>
+            <input id="bc-proxy-url" type="text" placeholder="http://192.168.x.x:8765" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);font-size:13px;" oninput="localStorage.setItem('shaxon_bc_proxy',this.value)">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="bc-so-input" type="text" placeholder="SO Number (e.g. 810929)" style="flex:1;min-width:160px;padding:6px 10px;border:1px solid var(--bdr2);border-radius:var(--r-md);background:var(--bg1);color:var(--txt1);font-size:13px;">
+            <button onclick="bcCheckMaterials()" style="padding:7px 16px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-size:13px;font-weight:500;">🔍 Check</button>
+          </div>
+          <div id="bc-result" style="font-size:13px;color:var(--txt2);"></div>
+        </div>
+      </div>
+    </div>
     <div class="admin-section" data-sec="danger">
       <div class="admin-section-hdr" onclick="toggleAdminSection('danger')" style="color:var(--red);">⚠️ Danger Zone</div>
       <div class="admin-section-body">
@@ -4522,6 +4599,7 @@ function renderAdmin(){
     </div>`;
   // Apply saved collapsed state (default: all collapsed except stuck if present)
   applyAdminSectionStates();
+  bcRestoreProxyInput();
   // When searching, auto-open sections that have matches so results aren't hidden
   if(q){
     if(activeJobsFiltered.length)document.querySelector('.admin-section[data-sec="active"]')?.classList.remove('collapsed');
@@ -4536,7 +4614,7 @@ function getAdminSectionStates(){
     if(raw)return JSON.parse(raw);
   }catch(e){}
   // Default state: stuck open, all others collapsed
-  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',posync:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',flowfix:'collapsed',shift:'collapsed',danger:'collapsed'};
+  return {stuck:'open',active:'collapsed',queue:'collapsed',completed:'collapsed',inventory:'collapsed',posync:'collapsed',sosync:'collapsed',closeorders:'collapsed',export:'collapsed',zombie:'collapsed',consistency:'collapsed',flowfix:'collapsed',shift:'collapsed',bccheck:'collapsed',danger:'collapsed'};
 }
 
 function applyAdminSectionStates(){
@@ -6783,9 +6861,11 @@ async function handleBulkStart_impl(){
 }
 
 // ── TICK ──────────────────────────────────────────────────────────────────────
-let _verCheckAt=0;
+let _verCheckAt=Date.now(); // delay first check by 10min so BC Orders can load
 let _pollAt=0;
 async function checkNewVersion(){
+  // Skip version check when running from local file
+  if(location.protocol==='file:')return;
   try{
     const r=await fetch('https://raw.githubusercontent.com/bkesap/shaxon-production/main/production_system_v1_6.html?_='+Date.now());
     const txt=await r.text();
@@ -6794,7 +6874,8 @@ async function checkNewVersion(){
       // Reload automatically; if jobs are active on THIS device, wait up to 5 min
       // for them to clear, then reload anyway to avoid stale versions persisting.
       const hasActive=()=>jobs&&jobs.some(j=>j.state==='active'||j.state==='paused');
-      if(!hasActive()){
+      const bcLoading=()=>typeof bcOrders!=='undefined'&&bcOrders.length>0&&Object.keys(bcLines||{}).some(k=>bcLines[k]==='loading');
+      if(!hasActive()&&!bcLoading()){
         showToast('🔄 New version — reloading / Cap nhat moi...','blue');
         setTimeout(()=>{location.href=location.pathname+'?_='+Date.now();},2500);
       } else {
@@ -6802,7 +6883,7 @@ async function checkNewVersion(){
         let waited=0;
         const waitReload=setInterval(()=>{
           waited+=10000;
-          if(!hasActive()||waited>=300000){
+          if((!hasActive()&&!bcLoading())||waited>=300000){
             clearInterval(waitReload);
             location.href=location.pathname+'?_='+Date.now();
           }
@@ -7171,9 +7252,144 @@ const confirmTestComplete = guardedAction(confirmTestComplete_impl);
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 // ── BUILD / VERSION STAMP ───────────────────────────────────────────────────
+// ── BC MATERIAL CHECK ────────────────────────────────────────────────────────
+function bcProxy(){return(localStorage.getItem('shaxon_bc_proxy')||'').replace(/\/$/,'');}
+
+async function bcGet(path){
+  const base=bcProxy();
+  if(!base)throw new Error('BC Proxy URL not set');
+  const r=await fetch(base+path,{headers:{'X-API-Key':'shaxon-bc-2026'}});
+  if(!r.ok)throw new Error('BC proxy error: '+r.status);
+  return r.json();
+}
+
+function bcRestoreProxyInput(){
+  const el=document.getElementById('bc-proxy-url');
+  if(el)el.value=localStorage.getItem('shaxon_bc_proxy')||'';
+}
+
+async function bcCheckMaterials(){
+  const so=document.getElementById('bc-so-input').value.trim();
+  const out=document.getElementById('bc-result');
+  if(!so){showToast('Enter SO number','red');return;}
+  if(!bcProxy()){showToast('Set BC Proxy URL first','red');return;}
+  out.innerHTML='<span style="color:var(--txt3);">⏳ Loading orders...</span>';
+  try{
+    const orders=await bcGet('/released-orders?top=200');
+    const matched=orders.filter(o=>(o.Source_No||o.source_no||'').toString()===so||(o.No||o.no||'').toString().includes(so));
+    if(!matched.length){out.innerHTML='<span style="color:var(--txt3);">No released production orders found for SO '+so+'</span>';return;}
+    let html='';
+    for(const ord of matched){
+      const prodNo=ord.No||ord.no||'';
+      out.innerHTML=html+`<div style="padding:8px 12px;color:var(--txt3);">⏳ Checking ${prodNo}...</div>`;
+      const comps=await bcGet('/prod-order-components?prod_no='+encodeURIComponent(prodNo));
+      if(!comps.length){html+=`<div style="padding:8px 12px;color:var(--txt3);">No components for ${prodNo}</div>`;continue;}
+      // Toplu inventory — tek çağrıda tüm item'lar
+      const itemNos=[...new Set(comps.map(c=>c.Item_No||c.item_no||'').filter(Boolean))];
+      const invData=await bcGet('/items-batch?nos='+encodeURIComponent(itemNos.join(',')));
+      const invMap={};
+      invData.forEach(i=>{invMap[i.number]=parseFloat(i.inventory||0);});
+      const shortRows=[];
+      for(const comp of comps){
+        const itemNo=comp.Item_No||comp.item_no||'';
+        const need=parseFloat(comp.Expected_Quantity||0);
+        const avail=invMap[itemNo]!==undefined?invMap[itemNo]:null;
+        const desc=comp.Description||comp.description||'—';
+        const uom=comp.Unit_of_Measure_Code||comp.unit_of_measure_code||'';
+        if(avail===null||avail<need) shortRows.push({itemNo,desc,need,avail,uom});
+      }
+      if(!shortRows.length){
+        html+=`<div style="margin-bottom:10px;padding:10px 14px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-md);">
+          <span style="font-size:13px;font-weight:600;">✅ ${prodNo}</span> <span style="font-size:12px;color:var(--txt3);">${ord.Description||''}</span>
+          <div style="font-size:12px;color:var(--green);margin-top:4px;">All components in stock — no shortage.</div></div>`;
+      }else{
+        html+=`<div style="margin-bottom:14px;border:1px solid var(--red);border-radius:var(--r-md);overflow:hidden;">
+          <div style="background:#FFF4F4;padding:8px 12px;font-size:13px;font-weight:600;color:var(--red-dk);">❌ ${prodNo} &nbsp;<span style="font-weight:400;color:var(--txt2);">${ord.Description||''}</span><span style="float:right;font-size:12px;">${shortRows.length} short</span></div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:var(--bg2);">
+              <th style="padding:6px 10px;text-align:left;">Item No</th>
+              <th style="padding:6px 10px;text-align:left;">Description</th>
+              <th style="padding:6px 10px;text-align:right;">Required</th>
+              <th style="padding:6px 10px;text-align:right;">In Stock</th>
+              <th style="padding:6px 10px;text-align:right;">Short by</th>
+            </tr></thead><tbody>
+            ${shortRows.map(r=>`<tr style="border-top:1px solid var(--bdr1);">
+              <td style="padding:6px 10px;font-family:monospace;color:var(--red);">${r.itemNo}</td>
+              <td style="padding:6px 10px;color:var(--txt2);">${r.desc}</td>
+              <td style="padding:6px 10px;text-align:right;">${r.need} ${r.uom}</td>
+              <td style="padding:6px 10px;text-align:right;color:${r.avail!==null&&r.avail<=0?'var(--red)':'var(--txt2)'};">${r.avail!==null?r.avail:'N/A'}</td>
+              <td style="padding:6px 10px;text-align:right;font-weight:600;color:var(--red);">${r.avail!==null?Math.abs(r.avail-r.need).toFixed(2):'?'} ${r.uom}</td>
+            </tr>`).join('')}
+            </tbody></table></div>`;
+      }
+      out.innerHTML=html;
+    }
+    out.innerHTML=html||'<span>Done.</span>';
+  }catch(e){out.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>';}
+}
+
+// ── SALES ORDERS ──────────────────────────────────────────────────────────────
+let soData = null;
+
+async function loadSalesOrders() {
+  const status = document.getElementById('soStatusBC');
+  const list = document.getElementById('soListBC');
+  const base = bcProxy();
+  if (!base) { list.innerHTML = '<div style="padding:24px;color:var(--red);">Set BC Proxy URL in Admin first.</div>'; return; }
+  status.textContent = 'Loading...';
+  list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--txt3);">Loading sales orders...</div>';
+  try {
+    const r = await fetch(base + '/sales-outstanding?top=500', {headers:{'X-API-Key':'shaxon-bc-2026'}});
+    const lines = await r.json();
+    if (lines.error) throw new Error(lines.error);
+    // Group by SO
+    const soMap = {};
+    for (const l of lines) {
+      const so = l.Document_No;
+      if (!soMap[so]) soMap[so] = {so, ship: l.Shipment_Date||l.Requested_Ship_Date||'', items: []};
+      soMap[so].items.push({item: l.No, desc: l.Description||'', qty: l.Outstanding_Quantity||0});
+    }
+    soData = Object.values(soMap).sort((a,b)=>(a.ship||'').localeCompare(b.ship||''));
+    status.textContent = soData.length + ' orders, ' + lines.length + ' lines';
+    renderSalesOrders();
+  } catch(e) {
+    list.innerHTML = '<div style="padding:24px;color:var(--red);">Error: ' + e.message + '</div>';
+    status.textContent = 'Error';
+  }
+}
+
+function renderSalesOrders() {
+  const list = document.getElementById('soListBC');
+  if (!soData || !soData.length) { list.innerHTML = '<div style="padding:24px;color:var(--txt3);">No outstanding orders.</div>'; return; }
+  let html = '';
+  for (const so of soData) {
+    html += `<div style="background:var(--bg1);border:1px solid var(--bdr2);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+      <div style="padding:10px 14px;background:var(--bg2);display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:14px;">${so.so}</span>
+        <span style="font-size:12px;color:var(--txt3);">Ship: ${so.ship||'—'}</span>
+        <span style="font-size:12px;color:var(--txt3);">${so.items.length} item(s)</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr style="background:var(--bg2);color:var(--txt2);">
+          <th style="padding:6px 14px;text-align:left;font-weight:600;">Item No</th>
+          <th style="padding:6px 14px;text-align:left;font-weight:600;">Description</th>
+          <th style="padding:6px 14px;text-align:right;font-weight:600;">Qty</th>
+        </tr>`;
+    for (const it of so.items) {
+      html += `<tr style="border-top:1px solid var(--bdr3);">
+        <td style="padding:7px 14px;font-family:monospace;">${it.item}</td>
+        <td style="padding:7px 14px;color:var(--txt2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.desc}</td>
+        <td style="padding:7px 14px;text-align:right;font-weight:600;">${it.qty.toLocaleString()}</td>
+      </tr>`;
+    }
+    html += '</table></div>';
+  }
+  list.innerHTML = html;
+}
+
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v55 — server-side rpc_shift_start + rpc_shift_end';
+const BUILD_TAG  = 'v70 — Sales Orders tab';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7528,6 +7744,388 @@ async function laborStopAction(sessionId,pauseMs){
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
+// ── BC ORDERS ───────────────────────────────────────────────────────────────
+const BC_KEY = 'shaxon-bc-2026';
+
+let bcOrders = [];
+let bcLines  = {};      // prod_no -> lines array
+let bcSel    = {};      // prod_no+line_no -> {route:'pp'|'cut'}
+let bcExpanded = {};    // prod_no -> bool
+let bcInventory = {};   // item_no -> inventory count
+let bcComponents = {};  // prod_no+line_no -> components array
+let bcPoMap = {};       // "soNorm|itemNo" -> {date, doc_no} — purchase order arrival dates
+
+async function loadBCOrders() {
+  const btn = document.getElementById('bcRefreshBtn');
+  const list = document.getElementById('bcOrderList');
+  btn.disabled = true; btn.textContent = 'Loading...';
+  list.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">Loading from Business Central...</div>';
+  try {
+    const [released, firmPlanned] = await Promise.all([
+      bcFetch('/released-orders?top=100'),
+      bcFetch('/firm-planned-orders?top=100').catch(()=>[])
+    ]);
+    bcOrders = [...released, ...firmPlanned].sort((a,b)=>(b.No||'').localeCompare(a.No||''));
+    bcSel = {}; bcExpanded = {}; bcLines = {}; bcComponents = {}; bcInventory = {}; bcPoMap = {};
+    renderBCOrders();
+    // Load purchase lines for PO arrival dates
+    try {
+      const normSO = s => String(s||'').replace(/^S[O0]\s*/i,'').replace(/\s*\/.*$/,'').replace(/^0+/,'') || String(s||'');
+      const poLines = await bcFetch('/purchase-lines?top=1000');
+      bcPoMap = {};
+      poLines.forEach(p => {
+        const soRaw = p.Special_Order_Sales_No||'';
+        if(!soRaw) return;
+        const soN = normSO(soRaw);
+        const itemNo = p.No||'';
+        const date = p.Expected_Receipt_Date||p.Planned_Receipt_Date||'';
+        if(!soN||!itemNo||!date||date==='0001-01-01') return;
+        const key = soN+'|'+itemNo;
+        // Keep earliest planned date
+        if(!bcPoMap[key] || date < bcPoMap[key].date) {
+          bcPoMap[key] = {date, doc_no: p.Document_No||''};
+        }
+      });
+    } catch(e) { console.warn('[BC] purchase-lines failed:', e); }
+    renderBCOrders();
+    // Auto-load components for all orders in background
+    bcAutoLoadAll();
+  } catch(e) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--red);">Proxy connection failed. Is bc_proxy.py running?<br><small>'+e.message+'</small></div>';
+  }
+  btn.disabled = false; btn.textContent = '↻ Refresh';
+}
+
+async function bcQuickStart(prodNo, route) {
+  const lines = bcLines[prodNo];
+  if (!Array.isArray(lines) || !lines.length) {
+    showToast('Lines not loaded yet — wait for check to complete', 'red'); return;
+  }
+  lines.forEach(l => { bcSel[prodNo+'_'+l.Line_No] = {route}; });
+  await bcStartSelected(prodNo);
+}
+
+async function bcAutoLoadAll() {
+  for (const o of bcOrders) {
+    const no = o.No||o.No_||'';
+    if (!no || bcLines[no]) continue;
+    try {
+      const data = await bcFetch('/prod-order-lines?source_no='+no);
+      bcLines[no] = data;
+      const comps = await bcFetch('/prod-order-components?prod_no='+no);
+      comps.forEach(c => {
+        const key = no+'_'+c.Line_No;
+        if (!bcComponents[key]) bcComponents[key] = [];
+        bcComponents[key].push(c);
+      });
+      const allItemNos = [...new Set(comps.map(c=>c.Item_No).filter(Boolean))].filter(n=>bcInventory[n]===undefined);
+      if (allItemNos.length) {
+        try {
+          const invData = await bcFetch('/items-batch?nos='+encodeURIComponent(allItemNos.join(',')));
+          invData.forEach(i=>{bcInventory[i.number]=parseFloat(i.inventory||0);});
+        } catch(e) {}
+      }
+      renderBCOrders();
+    } catch(e) { bcLines[no] = []; }
+  }
+}
+
+function renderBCOrders() {
+  const list = document.getElementById('bcOrderList');
+  if (!bcOrders.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">No released orders.</div>'; return; }
+  const q = (document.getElementById('bcSearch')||{}).value||'';
+  const filterVal = (document.getElementById('bcFilter')||{}).value||'all';
+  const sortShortFirst = document.getElementById('bcSortShortFirst')?.checked;
+
+  let filt = q ? bcOrders.filter(o => {
+    const no = (o.No||o.No_||'').toUpperCase();
+    const src = (o.Source_No||'').toUpperCase();
+    const s = q.toUpperCase();
+    return no.includes(s) || src.includes(s);
+  }) : [...bcOrders];
+
+  // Apply filter
+  filt = filt.filter(o => {
+    const no = o.No||o.No_||'';
+    const lines = Array.isArray(bcLines[no]) ? bcLines[no] : [];
+    const itemNeedMap = {};
+    lines.forEach(l => {
+      (bcComponents[no+'_'+l.Line_No]||[]).forEach(c => {
+        const inv = bcInventory[c.Item_No];
+        if (inv===undefined) return;
+        if (!itemNeedMap[c.Item_No]) itemNeedMap[c.Item_No]={need:0,stock:inv};
+        itemNeedMap[c.Item_No].need += parseFloat(c.Expected_Quantity||0);
+      });
+    });
+    const hasData = lines.length>0 && Object.keys(itemNeedMap).length>0;
+    const isShort = hasData && Object.values(itemNeedMap).some(v=>v.stock<v.need);
+    const isReady = hasData && !isShort;
+    if (filterVal==='short') return isShort;
+    if (filterVal==='ready') return isReady;
+    return true;
+  });
+
+  // Sort short first
+  if (sortShortFirst) {
+    filt.sort((a,b) => {
+      const isShort = (o) => {
+        const no = o.No||o.No_||'';
+        const lines = Array.isArray(bcLines[no]) ? bcLines[no] : [];
+        return lines.some(l => (bcComponents[no+'_'+l.Line_No]||[]).some(c => bcInventory[c.Item_No]!==undefined && (bcInventory[c.Item_No]||0)<(c.Expected_Quantity||0)));
+      };
+      return (isShort(b)?1:0) - (isShort(a)?1:0);
+    });
+  }
+
+  if (!filt.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">No results.</div>'; return; }
+  list.innerHTML = filt.map(o => {
+    const no = o.No || o.No_;
+    const expanded = bcExpanded[no];
+    const rawLines = bcLines[no];
+    const bcLineItems = Array.isArray(rawLines) ? rawLines : [];
+
+    // Aggregate unique missing components across ALL lines
+    const itemNeedMap = {}; // item_no -> {need, stock, desc, uom}
+    bcLineItems.forEach(l => {
+      (bcComponents[no+'_'+l.Line_No]||[]).forEach(c => {
+        const inv = bcInventory[c.Item_No];
+        if (inv === undefined) return; // not loaded yet
+        if (!itemNeedMap[c.Item_No]) itemNeedMap[c.Item_No] = {need:0, stock:inv, desc:c.Description||'', uom:c.Unit_of_Measure_Code||''};
+        itemNeedMap[c.Item_No].need += parseFloat(c.Expected_Quantity||0);
+      });
+    });
+    const shortItems = Object.entries(itemNeedMap).filter(([,v])=>v.stock<v.need);
+    const hasData = bcLineItems.length>0 && Object.keys(itemNeedMap).length>0;
+
+    const dueDate = o.Due_Date||'';
+    const dueFmt = dueDate&&dueDate!=='0001-01-01' ? new Date(dueDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+
+    // Queue status: check if this SO exists in app queue
+    // BC uses "S0812647" format; app stores "812647" — normalize both by stripping leading S+zeros
+    const normSO = s => String(s||'').replace(/^S[O0]\s*/i,'').replace(/\s*\/.*$/,'').replace(/^0+/,'') || String(s||'');
+    const soNo = o.Source_No||'';
+    const soNorm = normSO(soNo);
+    const appLines = lines||[];
+    const queueSOs = new Set(appLines.map(l=>normSO(l.so)).filter(Boolean));
+    // Find queue station's from_grp (last team that sent it to queue)
+    const matchingLine = soNorm ? appLines.find(l=>normSO(l.so)===soNorm) : null;
+    const queueStation = matchingLine ? (matchingLine.stations||[]).find(s=>s.state==='queue') : null;
+    const fromGrp = queueStation ? (queueStation.from_grp||queueStation.fromGroup||'') : '';
+    const inQueue = soNorm && queueSOs.has(soNorm);
+
+    // Teams actively working on this SO
+    const appJobs = jobs||[];
+    const activeTeams = [...new Set(
+      appJobs.filter(j=>normSO(j.so)===soNorm && ['active','paused','waiting'].includes(j.state||''))
+             .map(j=>j.group||j.grp||'').filter(Boolean)
+    )];
+    const teamBadge = activeTeams.length
+      ? activeTeams.map(t=>`<span style="padding:2px 7px;background:#E3F2FD;border:1px solid #90CAF9;border-radius:4px;font-size:11px;font-weight:600;color:#1565C0;">${t}</span>`).join(' ')
+      : '';
+
+    const queueBadge = soNorm
+      ? (inQueue
+          ? `<span style="padding:2px 8px;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:4px;font-size:11px;font-weight:600;color:#2E7D32;">In Queue${fromGrp?' · '+fromGrp:''}</span>`
+          : `<span style="padding:2px 8px;background:#FFF3E0;border:1px solid #FFCC80;border-radius:4px;font-size:11px;font-weight:600;color:#E65100;">Not in Queue</span>`)
+      : '';
+
+    let statusBadge = '';
+    if (hasData) {
+      statusBadge = shortItems.length>0
+        ? `<span style="padding:2px 10px;background:#FFF4F4;border:1px solid #F4B7B5;border-radius:4px;font-size:11px;font-weight:700;color:var(--red);">${shortItems.length} component${shortItems.length>1?'s':''} short</span>`
+        : `<span style="padding:2px 10px;background:var(--green-lt);border:1px solid var(--green-bdr);border-radius:4px;font-size:11px;font-weight:600;color:var(--green);">Ready</span>`;
+    } else if (!rawLines || rawLines==='loading') {
+      statusBadge = `<span style="padding:2px 8px;font-size:11px;color:#bbb;">Checking...</span>`;
+    }
+
+    // Shortage summary panel (shown always if data loaded and short)
+    let shortagePanel = '';
+    if (shortItems.length>0) {
+      shortagePanel = `<div style="margin:0 0 0 0;padding:8px 16px;background:#FFF8F8;border-bottom:1px solid #F4B7B5;">
+        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Component Shortage</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="color:var(--txt3);font-size:11px;">
+            <th style="text-align:left;padding:2px 8px 4px 0;font-weight:500;">Item No</th>
+            <th style="text-align:left;padding:2px 8px 4px 0;font-weight:500;">Description</th>
+            <th style="text-align:right;padding:2px 8px 4px 0;font-weight:500;">Total Need</th>
+            <th style="text-align:right;padding:2px 8px 4px 0;font-weight:500;">In Stock</th>
+            <th style="text-align:right;padding:2px 8px 4px 0;font-weight:500;">Short By</th>
+            <th style="text-align:left;padding:2px 0 4px 0;font-weight:500;">PO Arriving</th>
+          </tr></thead><tbody>
+          ${shortItems.map(([itemNo,v])=>{
+            const poKey = soNorm+'|'+itemNo;
+            const po = bcPoMap[poKey];
+            const arrCell = po ? `<span style="font-size:11px;color:#1565C0;font-weight:600;">${new Date(po.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>` : `<span style="color:#bbb;font-size:11px;">—</span>`;
+            return `<tr style="border-top:1px solid #fde8e8;">
+            <td style="padding:3px 8px 3px 0;font-family:monospace;font-size:11px;color:var(--blue);">${itemNo}</td>
+            <td style="padding:3px 8px 3px 0;color:var(--txt2);">${v.desc.substring(0,40)}</td>
+            <td style="padding:3px 8px 3px 0;text-align:right;">${v.need.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} ${v.uom}</td>
+            <td style="padding:3px 8px 3px 0;text-align:right;color:${v.stock<=0?'var(--red)':'var(--txt1)'};">${v.stock.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+            <td style="padding:3px 8px 3px 0;text-align:right;font-weight:700;color:var(--red);">${(v.need-v.stock).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} ${v.uom}</td>
+            <td style="padding:3px 0;">${arrCell}</td>
+          </tr>`;}).join('')}
+          </tbody></table></div>`;
+    }
+
+    const loadingHtml = expanded && (!rawLines || rawLines==='loading') ? '<div style="padding:8px 16px;color:#999;font-size:12px;">Loading from Business Central...</div>'
+      : expanded && typeof rawLines==='string' && rawLines.startsWith('error:') ? `<div style="padding:8px 16px;color:var(--red);font-size:12px;">${rawLines.slice(6)} <button onclick="delete bcLines['${no}'];toggleBCOrder('${no}')" style="margin-left:8px;padding:3px 10px;border:1px solid var(--red);border-radius:6px;cursor:pointer;font-size:11px;background:var(--red-lt);color:var(--red);">Retry</button></div>` : '';
+    const linesHtml = expanded && Array.isArray(rawLines) && rawLines.length ? renderBCLines(no, bcLineItems) : (expanded && Array.isArray(rawLines) && !rawLines.length ? '<div style="padding:8px 16px;color:#999;font-size:12px;">No lines found.</div>' : '');
+
+    return `<div class="bc-order-row" id="bcrow-${no}">
+      <div class="bc-order-hdr" onclick="toggleBCOrder('${no}')" style="display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;border-bottom:1px solid var(--bdr3);">
+        <span style="font-size:15px;font-weight:700;color:var(--blue);min-width:60px;">${no}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--txt2);">${o.Source_No||''}</span>
+        ${dueFmt?`<span style="font-size:12px;font-weight:600;color:var(--txt1);">Ship: ${dueFmt}</span>`:''}
+        ${o._status==='Firm Planned'?`<span style="padding:2px 7px;background:#FFF8E1;border:1px solid #FFE082;border-radius:4px;font-size:11px;font-weight:600;color:#F57F17;">Firm Planned</span>`:''}
+        <span style="flex:1"></span>
+        ${teamBadge}
+        ${queueBadge}
+        ${statusBadge}
+        <button onclick="event.stopPropagation();bcQuickStart('${no}','pp')" style="margin-left:8px;padding:3px 10px;font-size:11px;font-weight:600;border:1px solid var(--bdr2);border-radius:5px;background:var(--bg2);color:var(--txt2);cursor:pointer;" title="Select all + Part Pull">Part Pull</button>
+        <button onclick="event.stopPropagation();bcQuickStart('${no}','cut')" style="padding:3px 10px;font-size:11px;font-weight:600;border:1px solid var(--bdr2);border-radius:5px;background:var(--bg2);color:var(--txt2);cursor:pointer;" title="Select all + Cutting">Cutting</button>
+        <span style="font-size:11px;color:var(--txt3);margin-left:8px;">${expanded?'▼':'▶'}</span>
+      </div>
+      ${shortagePanel}
+      ${loadingHtml}${linesHtml}
+    </div>`;
+  }).join('');
+}
+
+function renderBCLines(prodNo, lines) {
+  if (!lines.length) return '';
+  const allSel = lines.every(l => bcSel[prodNo+'_'+l.Line_No]?.route);
+  return `<div class="bc-lines-wrap">
+    <div class="bc-lines-hdr">
+      <label class="bc-chk-wrap"><input type="checkbox" ${allSel?'checked':''} onchange="bcSelectAll('${prodNo}',this.checked)"> <span>Select All</span></label>
+      <span style="flex:1"></span>
+      <button class="bc-start-btn" onclick="bcStartSelected('${prodNo}')">Start Selected</button>
+    </div>
+    ${lines.map(l => {
+      const key = prodNo+'_'+l.Line_No;
+      const sel = bcSel[key] || {};
+      return `<div class="bc-line-row ${sel.route?'bc-line-routed':''}">
+        <div class="bc-line-main">
+          <label class="bc-chk-wrap"><input type="checkbox" ${sel.route?'checked':''} onchange="bcToggleLine('${prodNo}',${l.Line_No},this.checked)"></label>
+          <span class="bc-line-item">${l.Item_No||''}</span>
+          <span class="bc-line-desc">${(l.Description||'').substring(0,40)}</span>
+          <span class="bc-line-qty">${l.Quantity||l.Quantity_Base||''} pcs</span>
+          <div class="bc-route-btns">
+            <button class="bc-pp-btn ${sel.route==='pp'?'active':''}" onclick="bcSetRoute('${prodNo}',${l.Line_No},'pp')">Part Pull</button>
+            <button class="bc-cut-btn ${sel.route==='cut'?'active':''}" onclick="bcSetRoute('${prodNo}',${l.Line_No},'cut')">Cutting</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function toggleBCOrder(no) {
+  bcExpanded[no] = !bcExpanded[no];
+  if (bcExpanded[no] && !bcLines[no]) {
+    bcLines[no] = 'loading';
+    renderBCOrders();
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(()=>ctrl.abort(), 30000);
+      const data = await bcFetch('/prod-order-lines?source_no='+no, ctrl.signal);
+      clearTimeout(timer);
+      bcLines[no] = data;
+      renderBCOrders();
+      // Componentleri çek — prod_no bazında
+      try {
+        const comps = await bcFetch('/prod-order-components?prod_no='+no);
+        // Her line için componentleri grupla
+        comps.forEach(c => {
+          const key = no+'_'+c.Line_No;
+          if(!bcComponents[key]) bcComponents[key]=[];
+          bcComponents[key].push(c);
+        });
+        // Tüm component item'larının inventory'sini toplu çek
+        const allItemNos = [...new Set(comps.map(c=>c.Item_No).filter(Boolean))].filter(n=>bcInventory[n]===undefined);
+        if(allItemNos.length){
+          try{
+            const invData = await bcFetch('/items-batch?nos='+encodeURIComponent(allItemNos.join(',')));
+            invData.forEach(i=>{bcInventory[i.number]=parseFloat(i.inventory||0);});
+          }catch(e){}
+        }
+      } catch(e) {}
+      renderBCOrders();
+    } catch(e) {
+      bcLines[no] = 'error:' + (e.name==='AbortError'?'Timeout (30s) — BC API yavaş, tekrar dene':e.message);
+      renderBCOrders();
+    }
+  } else {
+    renderBCOrders();
+  }
+}
+
+async function bcFetch(path, signal) {
+  const base = (localStorage.getItem('shaxon_bc_proxy')||'http://localhost:8765').replace(/\/$/,'');
+  const r = await fetch(base + path, {headers:{'X-API-Key': BC_KEY}, signal});
+  if (!r.ok) throw new Error('BC proxy error ' + r.status);
+  return r.json();
+}
+
+function bcSelectAll(prodNo, checked) {
+  const lines = bcLines[prodNo] || [];
+  lines.forEach(l => {
+    const key = prodNo+'_'+l.Line_No;
+    if (checked) { if (!bcSel[key]) bcSel[key] = {route:'pp'}; }
+    else delete bcSel[key];
+  });
+  renderBCOrders();
+}
+
+function bcToggleLine(prodNo, lineNo, checked) {
+  const key = prodNo+'_'+lineNo;
+  if (checked) { if (!bcSel[key]) bcSel[key] = {route:'pp'}; }
+  else delete bcSel[key];
+  renderBCOrders();
+}
+
+function bcSetRoute(prodNo, lineNo, route) {
+  const key = prodNo+'_'+lineNo;
+  if (!bcSel[key]) bcSel[key] = {};
+  bcSel[key].route = route;
+  renderBCOrders();
+}
+
+async function bcStartSelected(prodNo) {
+  const order = bcOrders.find(o => (o.No||o.No_) === prodNo);
+  const so = order ? (order.Source_No||prodNo) : prodNo;
+  const lines = bcLines[prodNo] || [];
+  const toStart = lines.filter(l => bcSel[prodNo+'_'+l.Line_No]);
+  if (!toStart.length) { showToast('Önce satır seçin'); return; }
+
+  let ok = 0, fail = 0;
+  for (const l of toStart) {
+    const route = (bcSel[prodNo+'_'+l.Line_No]||{}).route || 'pp';
+    const team = route === 'cut' ? 'Cutting' : 'Part Pull';
+    const item = l.Item_No || '';
+    const qty  = l.Quantity || l.Quantity_Base || 1;
+    try {
+      await insertJob({so, item, qty, team});
+      if (route === 'cut') await insertJob({so, item, qty, team:'Part Pull'});
+      ok++;
+    } catch(e) { fail++; console.error(e); }
+  }
+  showToast(ok+' iş başlatıldı'+(fail?' ('+fail+' hata)':''), fail?'red':'green');
+  if (ok) { delete bcSel; bcSel = {}; renderBCOrders(); }
+}
+
+async function insertJob({so, item, qty, team}) {
+  const res = await rpcCall('rpc_start_new_line', {
+    p_so: so,
+    p_item: item,
+    p_qty_text: qty + ' pcs',
+    p_qty_int: qty,
+    p_team: team,
+    p_client_op_id: newOpId()
+  });
+  if (!res || res.error) throw new Error((res&&res.error) || 'RPC failed');
+  return res;
+}
+
 document.addEventListener('DOMContentLoaded',function(){
   if(typeof supabase!=='undefined'&&supabase.createClient){
     sb=supabase.createClient(SUPA_URL,SUPA_KEY);
