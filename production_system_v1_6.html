@@ -7389,7 +7389,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v70 — Sales Orders tab';
+const BUILD_TAG  = 'v71 — context menu block, done auto-close';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7651,7 +7651,7 @@ function _showDoneCardScan(activeSessions){
     <div style="font-size:16px;font-weight:700;color:var(--txt1);margin-bottom:6px;">Scan Card to Confirm DONE</div>
     <div style="font-size:12px;color:var(--txt2);margin-bottom:16px;">Quet the de xac nhan xong<br><strong>${workerNames}</strong></div>
     <div id="doneCardMsg" style="font-size:13px;color:var(--txt3);margin-bottom:12px;">Hold card to reader / Quet the</div>
-    <input id="doneCardInput" type="text" autocomplete="off" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" oninput="_doneCardInput(this.value,${JSON.stringify([...workerIds])})"/>
+    <input id="doneCardInput" type="text" inputmode="none" autocomplete="off" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" oninput="_doneCardInput(this.value,${JSON.stringify([...workerIds])})"/>
     <button onclick="_cancelDoneCardScan()" style="padding:10px 24px;background:var(--bg2);color:var(--txt2);border:1px solid var(--bdr2);border-radius:8px;font-size:13px;cursor:pointer;">Cancel / Huy</button>
   </div>`;
   document.body.appendChild(div);
@@ -7680,6 +7680,8 @@ function _cancelDoneCardScan(confirmed=false){
   if(confirmed&&_pendingDone){
     const {sentQty,remaining,j,availableQty,sid}=_pendingDone;
     _pendingDone=null;
+    closeModal('laborModal');
+    closeModal('doneQtyModal');
     executeDone(sid,sentQty,remaining,remaining===0&&j.group===FINAL,j,availableQty);
   } else {
     _pendingDone=null;
@@ -8135,5 +8137,6 @@ document.addEventListener('DOMContentLoaded',function(){
   }
 });
 </script>
+<script>document.addEventListener('contextmenu',e=>e.preventDefault());</script>
 </body>
 </html>
