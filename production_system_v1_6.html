@@ -7389,7 +7389,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v71 — context menu block, done auto-close';
+const BUILD_TAG  = 'v72 — keyboard fix, labor modal auto-close';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7532,7 +7532,7 @@ async function refreshLaborModal(){
       <span style="font-size:11px;color:var(--txt3);">Hold card to reader — or tap to type UID</span>
     </div>
     <style>@keyframes laborRipple{0%{transform:translate(-50%,-50%) scale(.9);opacity:.8}100%{transform:translate(-50%,-50%) scale(1.3);opacity:0}}</style>
-    <input id="laborCardScan" type="text" autocomplete="off"
+    <input id="laborCardScan" type="text" inputmode="none" autocomplete="off"
       style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"
       oninput="laborScanInput(this.value)"/>
     <div id="laborWorkerFound" style="min-height:0;"></div>
@@ -7717,7 +7717,7 @@ function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
     if(msg)msg.innerHTML='<span style="color:var(--green);">✓ Confirmed — finishing session</span>';
     document.getElementById('finishScanArea')?.remove();
     _finishSession=null;
-    setTimeout(()=>laborStopAction(sessionId,totalPauseMs),400);
+    setTimeout(()=>{laborStopAction(sessionId,totalPauseMs);closeModal('laborModal');},400);
   } else if(scanned){
     if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
   } else {
