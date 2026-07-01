@@ -7389,7 +7389,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v72 — keyboard fix, labor modal auto-close';
+const BUILD_TAG  = 'v73 — scan focus fix, done auto-open after finish';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7476,6 +7476,7 @@ function attachLongPress(el,stationId,label){
 
 let _laborModalStationId=null;
 let _laborModalLabel=null;
+let _laborFocusTimer=null;
 
 async function openLaborModal(stationId,label){
   // All Teams = readonly, no labor tracking
@@ -7544,6 +7545,7 @@ async function refreshLaborModal(){
 
   body.innerHTML=html;
   setTimeout(()=>{const inp=document.getElementById('laborCardScan');if(inp)inp.focus();},100);
+  _laborFocusTimer=setInterval(()=>{const inp=document.getElementById('laborCardScan');if(inp&&document.getElementById('laborModal')?.classList.contains('open'))inp.focus();else clearInterval(_laborFocusTimer);},600);
 }
 
 function laborScanInput(val){
@@ -7717,7 +7719,8 @@ function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
     if(msg)msg.innerHTML='<span style="color:var(--green);">✓ Confirmed — finishing session</span>';
     document.getElementById('finishScanArea')?.remove();
     _finishSession=null;
-    setTimeout(()=>{laborStopAction(sessionId,totalPauseMs);closeModal('laborModal');},400);
+    const _sid=_laborModalStationId;
+    setTimeout(()=>{laborStopAction(sessionId,totalPauseMs);closeModal('laborModal');setTimeout(()=>{if(_sid)openDoneModal(_sid);},300);},400);
   } else if(scanned){
     if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
   } else {
