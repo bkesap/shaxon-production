@@ -7389,7 +7389,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v73 — scan focus fix, done auto-open after finish';
+const BUILD_TAG  = 'v74 — done popup only for last worker on station';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
@@ -7720,7 +7720,7 @@ function laborVerifyFinishCard(val,sessionId,totalPauseMs,workerId){
     document.getElementById('finishScanArea')?.remove();
     _finishSession=null;
     const _sid=_laborModalStationId;
-    setTimeout(()=>{laborStopAction(sessionId,totalPauseMs);closeModal('laborModal');setTimeout(()=>{if(_sid)openDoneModal(_sid);},300);},400);
+    setTimeout(async()=>{await laborStopAction(sessionId,totalPauseMs);closeModal('laborModal');const{data:rem}=await sb.from('labor_sessions').select('id').eq('station_id',_sid).in('status',['active','paused']);if(_sid&&(!rem||rem.length===0))setTimeout(()=>openDoneModal(_sid),300);},400);
   } else if(scanned){
     if(msg)msg.innerHTML=`<span style="color:var(--red);">❌ Wrong card — ${scanned.name}</span>`;
   } else {
