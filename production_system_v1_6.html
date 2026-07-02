@@ -1196,12 +1196,13 @@ function nowStr(){
 function nowIso(){return new Date().toISOString();}
 // ── BREAK-AWARE TIME (v11) ───────────────────────────────────────────────────
 // Workers do not work during breaks, so those minutes must NOT count toward a
-// station's elapsed/labor time. We deduct break windows from every active
+// station's elapsed/labor time. We deduct non-working windows from every active
 // segment instead of pausing/resuming state (state-based pause is exactly the
 // shift-resume ghost path we fixed in v9/v10 — never reintroduce it).
 // Times are Pacific local; all users are in LA so device-local == Pacific.
-// Daily breaks: 09:30-09:45 and 14:00-14:15.
-const BREAK_WINDOWS=[[9,30,9,45],[14,0,14,15]];
+// Shift: 08:00-16:30. Breaks: 09:30-09:45 and 14:00-14:15.
+// Off-shift (midnight-08:00 and 16:30-midnight) is deducted like a break.
+const BREAK_WINDOWS=[[0,0,8,0],[9,30,9,45],[14,0,14,15],[16,30,24,0]];
 function breakMsBetween(fromMs,toMs){
   if(!(toMs>fromMs))return 0;
   let total=0;
@@ -7389,7 +7390,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v74 — done popup only for last worker on station';
+const BUILD_TAG  = 'v75 — timer counts shift hours only (08:00-16:30)';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
