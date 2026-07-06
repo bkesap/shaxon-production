@@ -565,6 +565,7 @@ body{font-family:var(--font);background:var(--bg2);}
         <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
         <option>Part Pull</option>
         <option>Testing / Packing</option>
+        <option>LCO1</option>
       </select>
     </div>
     <div class="ef f-so">
@@ -2059,7 +2060,7 @@ function handleStart_impl(){
   if(!qty){showToast('Enter quantity / Nhap so luong');return;}
   const existingLine=lines.find(l=>l.so===so&&l.item===item);
   // Cutting and Part Pull can release new items. Other teams must take from queue.
-  const GATE_TEAMS=['Cutting','Part Pull'];
+  const GATE_TEAMS=['Cutting','Part Pull','LCO1'];
   if(!existingLine&&!GATE_TEAMS.includes(team)){
     showWarn('red','Cannot Start Here','Release from Cutting or Part Pull only',
       `New items can only be released by <strong>Cutting</strong> or <strong>Part Pull</strong>. Other teams must take items from the Queue.`,
@@ -2317,7 +2318,7 @@ async function confirmDone_impl(){
     scheduleLoadAll();
     return;
   }
-  const isFinal=j.group===FINAL;
+  const isFinal=j.group===FINAL||j.group==='LCO1';
   // Available = what this station actually received or has remaining
   const availableQty=j.state==='waiting'
     ?j.remainingQty
@@ -2333,14 +2334,14 @@ async function confirmDone_impl(){
   const activeSessions=(laborSessions[doneTargetId]||[]).filter(s=>['active','paused'].includes(s.status));
   if(activeSessions.length>0){
     closeModal('doneQtyModal');
-    _pendingDone={sentQty,remaining,isFinal:j.group===FINAL,j,availableQty,sid:doneTargetId};
+    _pendingDone={sentQty,remaining,isFinal:j.group===FINAL||j.group==='LCO1',j,availableQty,sid:doneTargetId};
     _showDoneCardScan(activeSessions);
     return;
   }
 
   closeModal('doneQtyModal');
 
-  // If Testing/Packing and sending ALL → show complete confirm
+  // If Testing/Packing (or LCO1) and sending ALL → show complete confirm
   if(isFinal&&isFullSend){
     testCompletePending={sid:doneTargetId,sentQty,j,availableQty};
     document.getElementById('testCompleteCtx').textContent=j.so+' / '+j.item;
@@ -2451,7 +2452,7 @@ async function executeDone_impl(sid,sentQty,remaining,markComplete,j,availableQt
 }
 
 // ── QUEUE — take ──────────────────────────────────────────────────────────────
-const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing'];
+const ALL_TEAMS=['Cutting','C1','C2','C3','C4','Part Pull','Testing / Packing','LCO1'];
 
 // Returns reason a team cannot take this queue item, or null if allowed.
 function teamBlockReason(line,team,qty,isPartialMerged){
@@ -7390,7 +7391,7 @@ function renderSalesOrders() {
 
 // Bump BUILD_TAG every time a new file is deployed so F12 → Console makes it
 // unambiguous which build is actually live (no more "is the new file up?").
-const BUILD_TAG  = 'v75 — timer counts shift hours only (08:00-16:30)';
+const BUILD_TAG  = 'v76 — LCO1 team (standalone, direct to finished)';
 const BUILD_TIME = '2026-06-03 PDT';
 window.SYS_VERSION = { tag: BUILD_TAG, built: BUILD_TIME };
 console.log(
